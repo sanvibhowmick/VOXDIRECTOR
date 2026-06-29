@@ -1,0 +1,119 @@
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:ital,wght@0,300;0,600;1,300;1,600&family=IBM+Plex+Mono:wght@400;500&family=Inter:wght@300;400;500&display=swap');
+
+/* ── Design tokens ── */
+:root {
+  /* Palette */
+  --amber:      #C8862F;
+  --amber-lt:   #D4A94A;
+  --amber-dim:  rgba(200,134,47,0.14);
+  --rust:       #B85C38;
+  --ink:        #211C16;
+  --ink-dim:    #6B5A44;
+  --bone:       #F3ECE0;
+  --cream:      #FBF8F2;
+  --void:       #14110D;
+
+  /* Surfaces */
+  --bg:         #FBF8F2;
+  --card-bg:    #FFFFFF;
+
+  /* Lines */
+  --line:       rgba(33,28,22,0.10);
+  --line-strong:rgba(33,28,22,0.20);
+
+  /* Typography */
+  --font-sans:  'Inter', system-ui, sans-serif;
+  --font-serif: 'Fraunces', Georgia, serif;
+  --font-mono:  'IBM Plex Mono', 'Courier New', monospace;
+}
+
+/* ── Reset ── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: var(--font-sans);
+  background: var(--bg);
+  color: var(--ink);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── Shared card shell ── */
+.vox-card {
+  background: var(--card-bg);
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  padding: 28px 24px;
+  width: 100%;
+  max-width: 480px;
+  margin: 0 auto;
+}
+
+/* ── Form primitives ── */
+.vox-field { margin-bottom: 18px; }
+
+.vox-label {
+  display: block;
+  font-size: 11.5px;
+  font-weight: 500;
+  letter-spacing: 0.5px;
+  color: var(--ink-dim);
+  margin-bottom: 7px;
+  text-transform: uppercase;
+  font-family: var(--font-mono);
+}
+
+.vox-input {
+  width: 100%;
+  padding: 10px 14px;
+  font-family: var(--font-sans);
+  font-size: 14px;
+  color: var(--ink);
+  background: var(--cream);
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  outline: none;
+  transition: border-color 0.18s ease, box-shadow 0.18s ease;
+}
+.vox-input::placeholder { color: var(--ink-dim); opacity: 0.6; }
+.vox-input:focus {
+  border-color: var(--amber);
+  box-shadow: 0 0 0 3px rgba(200,134,47,0.15);
+}
+.vox-input.error {
+  border-color: #C0392B;
+  box-shadow: 0 0 0 3px rgba(192,57,43,0.12);
+}
+
+.vox-field-error {
+  font-size: 12px;
+  color: #C0392B;
+  margin-top: 5px;
+}
+
+/* ── Primary button ── */
+.vox-btn-primary {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  padding: 14px 20px;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  font-weight: 500;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--cream);
+  background: var(--ink);
+  border: none;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: background 0.2s ease, transform 0.15s ease;
+}
+.vox-btn-primary:hover  { background: #3A3028; }
+.vox-btn-primary:active { transform: scale(0.98); }
+.vox-btn-primary:disabled {
+  opacity: 0.38;
+  cursor: not-allowed;
+  transform: none;
+}
