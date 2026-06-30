@@ -1,56 +1,63 @@
-const BASE_URL = 'http://localhost:5000/api';
+// frontend/src/services/api.js
+const API_BASE = "http://localhost:5000";
 
-/**
- * Uploads raw book text to Express and receives the HTTP 202 Ticket.
- */
-/**
- * Packages the physical binary file into FormData and transmits to Express.
- */
-export async function uploadManuscript(file, title, voice) {
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('title', title);
-    formData.append('voice', voice || 'nova');
+export const uploadManuscript = async (file, title, voice) => {
+  const formData = new FormData();
+  formData.append("file", file);
+  formData.append("title", title);
+  formData.append("voice", voice);
 
-    const res = await fetch(`${BASE_URL}/process-book`, {
-        method: 'POST',
-        // ⚠️ CRITICAL INTERVIEW NOTE: Never manually set 'Content-Type': 'multipart/form-data' here!
-        // The browser must automatically compute and inject the exact binary boundary string.
-        body: formData
-    });
+  const res = await fetch(`${API_BASE}/api/process-book`, {
+    method: "POST",
+    body: formData,
+  });
 
-    if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error || 'Failed to queue manuscript.');
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => ({}));
+    throw new Error(errorData.error || `Server responded with ${res.status}`);
+  }
+  return res.json();
+};
+
+export const subscribeToProgress = (title, onProgress, onComplete, onError) => {
+  const es = new EventSource(`${API_BASE}/api/status/${encodeURIComponent(title)}`);
+
+  es.onmessage = (event) => {
+    try {
+      const data = JSON.parse(event.data);
+      onProgress(data);
+      if (data.status === "READY") {
+        es.close();
+        onComplete(data);
+      }
+    } catch (err) {
+      console.error("Failed to parse SSE data", err);
     }
+  };
 
-    return await res.json();
-}
+  es.onerror = (err) => {
+    es.close();
+    if (onError) onError(err);
+  };
 
-/**
- * Listens to the backend SSE pipe for live rendering updates.
- * Returns a teardown function to safely close the socket.
- */
-export function subscribeToProgress(bookTitle, onTick, onFinish, onError) {
-    const encodedTitle = encodeURIComponent(bookTitle);
-    const eventSource = new EventSource(`${BASE_URL}/status/${encodedTitle}`);
+  return () => es.close();
+};
 
-    eventSource.onmessage = (event) => {
-        const data = JSON.parse(event.data);
-        onTick(data);
+// NEW: Centralized Cleanup API
+export const cleanupBookFiles = async (title) => {
+  try {
+    const res = await fetch(`${API_BASE}/api/cleanup/${encodeURIComponent(title)}`, {
+      method: 'DELETE',
+    });
+    if (!res.ok) throw new Error("Cleanup request failed");
+    return true;
+  } catch (err) {
+    console.error("Cleanup error:", err);
+    return false;
+  }
+};
 
-        if (data.status === 'READY') {
-            eventSource.close();
-            onFinish();
-        }
-    };
-
-    eventSource.onerror = (err) => {
-        console.error('SSE Connection Dropped:', err);
-        eventSource.close();
-        if (onError) onError(err);
-    };
-
-    // Return cleanup function for React useEffect unmounting
-    return () => eventSource.close();
-}
+// Helper to get the direct file URL
+export const getAudioUrl = (title) => {
+  return `${API_BASE}/master_audiobooks/${encodeURIComponent(title)}.mp3`;
+};

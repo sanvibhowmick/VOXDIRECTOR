@@ -1,5 +1,6 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useRef } from "react";
 import { Play, Pause, RotateCcw, Download, Loader2 } from "lucide-react";
+import { cleanupBookFiles } from "../services/api";
 
 /* ── Helpers ── */
 function formatTime(totalSeconds) {
@@ -53,22 +54,13 @@ export default function MasterPlayer({ bookData, result, onReset }) {
   };
 
   // ── DELETE & RESET LOGIC ──
-  const triggerServerCleanup = async () => {
+  const handleCleanupAndReset = async () => {
     const titleToDelete = result?.bookTitle || bookData?.title;
     if (titleToDelete) {
-      try {
-        console.log(`🗑️ Asking server to delete: ${titleToDelete}`);
-        await fetch(`http://localhost:5000/api/cleanup/${encodeURIComponent(titleToDelete)}`, {
-          method: 'DELETE',
-        });
-      } catch (err) {
-        console.error("Failed to delete from server:", err);
-      }
+      console.log(`🗑️ Asking server to delete: ${titleToDelete}`);
+      await cleanupBookFiles(titleToDelete); // Using the centralized API service
     }
-  };
-
-  const handleCleanupAndReset = async () => {
-    await triggerServerCleanup();
+    
     if (audioRef.current) audioRef.current.pause();
     onReset();
   };
@@ -81,9 +73,11 @@ export default function MasterPlayer({ bookData, result, onReset }) {
     setIsDownloading(true);
     
     try {
+      // Fetch file into browser RAM
       const res = await fetch(result?.audioUrl);
       const blob = await res.blob();
       
+      // Trigger secure download
       const localUrl = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.style.display = 'none';
@@ -92,15 +86,14 @@ export default function MasterPlayer({ bookData, result, onReset }) {
       document.body.appendChild(a);
       a.click();
       
+      // Cleanup browser memory
       window.URL.revokeObjectURL(localUrl);
       document.body.removeChild(a);
 
-      await triggerServerCleanup();
-      if (audioRef.current) audioRef.current.pause();
-      onReset();
-
+      
     } catch (err) {
       console.error("Failed to download or clean up:", err);
+      alert("Failed to download the file. It may have already been deleted.");
     } finally {
       setIsDownloading(false);
     }
@@ -189,7 +182,6 @@ export default function MasterPlayer({ bookData, result, onReset }) {
 
       <div className="mp-meta">
         <div className="mp-book-title">{bookData?.title || "Untitled"}</div>
-        {/* Raw Voice ID is rendered here now */}
         {bookData?.voice && <div className="mp-voice">{bookData.voice}</div>}
       </div>
 

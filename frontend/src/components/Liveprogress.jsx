@@ -1,58 +1,38 @@
 import React, { useState, useEffect, useRef } from "react";
 import { Check } from "lucide-react";
-import { subscribeToProgress } from "../services/api";
+import { subscribeToProgress, getAudioUrl } from "../services/api";
 
 const STAGES = ["Reading manuscript", "Casting the voice", "Mastering audio"];
 
-/**
- * Enterprise LiveProgress Dashboard
- * Driven by real-time Express Server-Sent Events (SSE).
- */
 export default function LiveProgress({ bookData, onComplete }) {
   const [percent, setPercent] = useState(0);
   const [error, setError] = useState("");
   const doneRef = useRef(false);
 
-  // Safely resolve the title string whether App.jsx passes an object or raw text
   const title = typeof bookData === "string" 
     ? bookData 
-    : bookData?.title || bookData?.book_title || "Untitled";
+    : bookData?.title || "Untitled";
 
   useEffect(() => {
-    // 1. Open the live Server-Sent Events (SSE) socket to Express
     const unsubscribe = subscribeToProgress(
       title,
-      (incomingPacket) => {
-        // Live updates driven strictly by PostgreSQL chunk completion counts!
-        setPercent(incomingPacket.percent || 0);
-      },
+      (packet) => setPercent(packet.percent || 0),
       () => {
-        // Express confirmed 100% Byte-Stitching is complete
         if (doneRef.current) return;
         doneRef.current = true;
         
         setTimeout(() => {
-          // Point to your Express static folder where the final MP3 is saved
-          const audioUrl = `http://localhost:5000/master_audiobooks/${encodeURIComponent(title)}.mp3`;
-          
           onComplete?.({ 
-            duration: "Ready", 
-            audioUrl: audioUrl, // Passes the URL to the player!
-            bookTitle: title    // Passes the title so we know what to delete!
+            duration: "Ready",
+            audioUrl: getAudioUrl(title)
           });
         }, 600);
       },
-      (streamErr) => {
-        console.error("⚠️ [SSE Network Drop]:", streamErr);
-        setError("Connection interrupted. Synthesis running in background...");
-      }
+      (err) => setError("Connection interrupted. Synthesis running in background...")
     );
-
-    // Teardown network socket cleanly if the user navigates away or unmounts
     return () => unsubscribe();
   }, [title, onComplete]);
 
-  // Map progress percentage dynamically to the 3 visual production stages
   const stageIndex = percent < 30 ? 0 : percent < 85 ? 1 : 2;
   const circumference = 2 * Math.PI * 54;
   const offset = circumference * (1 - percent / 100);
@@ -162,7 +142,7 @@ export default function LiveProgress({ bookData, onComplete }) {
           .lp-bar { animation: none; }
         }
       `}</style>
-
+      
       {/* Progress ring */}
       <div
         className="lp-ring-wrap"
@@ -173,48 +153,26 @@ export default function LiveProgress({ bookData, onComplete }) {
         aria-label="Narration progress"
       >
         <svg width="132" height="132" viewBox="0 0 132 132" aria-hidden="true">
-          <circle
-            cx="66" cy="66" r="54"
-            fill="none"
-            strokeWidth="8"
-            stroke="var(--line)"
-          />
-          <circle
-            cx="66" cy="66" r="54"
-            fill="none"
-            strokeWidth="8"
-            strokeLinecap="round"
-            strokeDasharray={circumference}
-            strokeDashoffset={offset}
-            stroke="var(--amber)"
-            style={{ transition: "stroke-dashoffset 0.3s cubic-bezier(0.4, 0, 0.2, 1)" }}
-          />
+          <circle cx="66" cy="66" r="54" fill="none" strokeWidth="8" stroke="var(--line)" />
+          <circle cx="66" cy="66" r="54" fill="none" strokeWidth="8" strokeLinecap="round" strokeDasharray={circumference} strokeDashoffset={offset} stroke="var(--amber)" style={{ transition: "stroke-dashoffset 0.3s cubic-bezier(0.4, 0, 0.2, 1)" }} />
         </svg>
         <div className="lp-pct">{Math.round(percent)}%</div>
       </div>
 
-      <div className="lp-title">
-        Narrating "{title}"
-      </div>
+      <div className="lp-title">Narrating "{title}"</div>
       <div className="lp-sub" aria-live="polite">
         {error ? <span style={{ color: "#d32f2f" }}>{error}</span> : `${STAGES[stageIndex]}…`}
       </div>
 
-      {/* Stage checklist */}
       <ul className="lp-stages">
-        {STAGES.map((s, i) => {
-          const state = i < stageIndex ? "done" : i === stageIndex ? "active" : "";
-          return (
-            <li key={s} className={`lp-stage${state ? ` ${state}` : ""}`}>
-              <span className="lp-stage-icon" aria-hidden="true">
-                {i < stageIndex && (
-                  <Check size={11} color="#FBF8F2" strokeWidth={3} />
-                )}
-              </span>
-              {s}
-            </li>
-          );
-        })}
+        {STAGES.map((s, i) => (
+          <li key={s} className={`lp-stage ${i < stageIndex ? "done" : i === stageIndex ? "active" : ""}`}>
+            <span className="lp-stage-icon">
+              {i < stageIndex && <Check size={11} color="#FBF8F2" strokeWidth={3} />}
+            </span>
+            {s}
+          </li>
+        ))}
       </ul>
 
       {/* Waveform */}
