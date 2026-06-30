@@ -14,18 +14,7 @@ class TTSRequest(BaseModel):
 
 
 NARRATOR_VOICE = "en-US-AndrewNeural"
-MALE_DIALOGUE_VOICE = "en-US-GuyNeural"
-FEMALE_DIALOGUE_VOICE = "en-US-EmmaNeural"
 
-MALE_ANCHORS = {
-    'he', 'him', 'his', 'himself', 'man', 'boy',
-    'father', 'brother', 'king', 'sir', 'guy'
-}
-
-FEMALE_ANCHORS = {
-    'she', 'her', 'hers', 'herself', 'woman', 'girl',
-    'mother', 'sister', 'queen', 'lady', 'gal'
-}
 
 EMOTION_SETTINGS = {
     "sadness": {"pitch": "-6Hz", "rate": "-10%"},
@@ -46,20 +35,6 @@ EMOTION_SETTINGS = {
     # Baseline narrative anchor
     "neutral": {"pitch": "+0Hz", "rate": "+0%"}
 }
-
-
-def resolve_actor_voice(narration_residue: str) -> str:
-    words = set(re.findall(r'\b[a-z]+\b', narration_residue.lower()))
-
-    if len(words.intersection(FEMALE_ANCHORS)) > len(words.intersection(MALE_ANCHORS)):
-        print("    ♀️ [Heuristic] Resolved female pronoun -> Casting Emma")
-        return FEMALE_DIALOGUE_VOICE
-
-    elif len(words.intersection(MALE_ANCHORS)) > len(words.intersection(FEMALE_ANCHORS)):
-        print("    ♂️ [Heuristic] Resolved male pronoun -> Casting Guy")
-        return MALE_DIALOGUE_VOICE
-
-    return NARRATOR_VOICE
 
 
 async def stream_text_to_bytes(text: str, voice: str, pitch: str, rate: str) -> bytes:
@@ -106,10 +81,6 @@ async def synthesize_audio(req: TTSRequest):
 
             parts = re.split(r'([\"“][^\"”]*[\"”])', req.text)
 
-            # Extract leftover non-dialogue context to cast the actor
-            residue = re.sub(r'[\"“][^\"”]*[\"”]', '', req.text)
-            actor = resolve_actor_voice(residue)
-
             for part in parts:
                 clean_seg = part.strip()
 
@@ -124,10 +95,10 @@ async def synthesize_audio(req: TTSRequest):
                         .replace('”', '')
                     )
 
-                    # Render speech bytes with emotional actor
+                    # Render ALL speech bytes with the single male dialogue actor
                     final_payload += await stream_text_to_bytes(
                         raw_speech,
-                        actor,
+                        NARRATOR_VOICE,
                         settings["pitch"],
                         settings["rate"]
                     )

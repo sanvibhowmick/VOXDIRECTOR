@@ -32,8 +32,15 @@ export default function LiveProgress({ bookData, onComplete }) {
         doneRef.current = true;
         
         setTimeout(() => {
-          onComplete?.({ duration: "Ready" });
-        }, 600); // 600ms buffer to let the final SVG ring animation complete smoothly
+          // Point to your Express static folder where the final MP3 is saved
+          const audioUrl = `http://localhost:5000/master_audiobooks/${encodeURIComponent(title)}.mp3`;
+          
+          onComplete?.({ 
+            duration: "Ready", 
+            audioUrl: audioUrl, // Passes the URL to the player!
+            bookTitle: title    // Passes the title so we know what to delete!
+          });
+        }, 600);
       },
       (streamErr) => {
         console.error("⚠️ [SSE Network Drop]:", streamErr);

@@ -22,7 +22,6 @@ export async function finalizeManuscript(pool, bookTitle) {
     if (activeJobs.has(bookTitle)) return;
     activeJobs.add(bookTitle);
 
-    const safeTitle = bookTitle.replace(/[^a-z0-9]/gi, '_').toLowerCase();
     console.log(`\n🧵 [Finalizer] All chunks cleared for "${bookTitle}". Initiating Master Byte-Stitch...`);
 
     const client = await pool.connect();
@@ -40,7 +39,8 @@ export async function finalizeManuscript(pool, bookTitle) {
             return;
         }
 
-        const masterPath = path.join(MASTER_DIR, `master_${safeTitle}.mp3`);
+        // FIX: Match the exact bookTitle instead of using safeTitle!
+        const masterPath = path.join(MASTER_DIR, `${bookTitle}.mp3`);
         const writeStream = fs.createWriteStream(masterPath);
 
         // Stream binary frames sequentially into the master MP3 (~15MB RAM footprint)
