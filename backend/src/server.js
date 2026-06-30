@@ -2,10 +2,13 @@ import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import pg from 'pg';
+import multer from 'multer';
+import { createRequire } from 'module';
+const require = createRequire(import.meta.url);
+const pdfLib = require('pdf-parse');
 import { scrubDocumentDebris } from './utils/scrubber.js';
 import { createSlidingTriplets } from './utils/chunker.js';
 import { startDispatcherDaemon } from './services/dispatcher.js';
-
 
 dotenv.config();
 
@@ -13,16 +16,23 @@ const app = express();
 const PORT = process.env.PORT || 5000;
 const { Pool } = pg;
 
-// Initialize PostgreSQL Connection Pool
 const pool = new Pool({
     connectionString: process.env.DATABASE_URL
 });
 
+// Configure Multer to catch physical file buffers in RAM
+const upload = multer({
+    storage: multer.memoryStorage(),
+    limits: { 
+        fileSize: 50 * 1024 * 1024,   // 50 MB limit for binary book files (req.file)
+        fieldSize: 10 * 1024 * 1024   // 10 MB limit for form text fields (req.body)
+    }
+});
+
 app.use(cors());
 app.use('/master_audiobooks', express.static('master_audiobooks'));
-app.use(express.json({ limit: '50mb' })); // Large limit to accept full book texts
+app.use(express.json({ limit: '50mb' }));
 
-// Automatically verify database tables match our full pipeline requirements
 async function initDB() {
     const createTableQuery = `
         CREATE TABLE IF NOT EXISTS book_chunks (
@@ -48,19 +58,45 @@ async function initDB() {
 }
 
 /**
- * ASYNC INGESTION ROUTE (HTTP 202 Ticket Pattern)
- * Instantly queues the manuscript and releases the browser connection.
+ * BINARY INGESTION ROUTE (HTTP 202 Ticket Pattern)
+ * Intercepts physical file buffers and extracts prose from PDF/TXT natively.
  */
-app.post('/api/process-book', async (req, res) => {
-    const { title, raw_text } = req.body;
+app.post('/api/process-book', upload.single('file'), async (req, res) => {
+    const { title, voice } = req.body;
+    const file = req.file;
 
-    if (!title || !raw_text) {
-        return res.status(400).json({ error: "Please provide both 'title' and 'raw_text'." });
+    if (!file || !title) {
+        return res.status(400).json({ error: "Please provide both a valid manuscript file and a book title." });
     }
 
     try {
-        console.log(`📖 Received manuscript: "${title}". Scrubbing debris...`);
-        const scrubbedText = scrubDocumentDebris(raw_text);
+        console.log(`📖 Intercepted file: "${file.originalname}" (${file.mimetype}). Extracting prose...`);
+        let rawText = '';
+
+        // Universal PDF Extraction (Handles both v1 Legacy & v2 Class-based exports)
+        if (file.mimetype === 'application/pdf' || file.originalname.toLowerCase().endsWith('.pdf')) {
+            if (typeof pdfLib === 'function') {
+                // Legacy pdf-parse v1.x
+                const pdfData = await pdfLib(file.buffer);
+                rawText = pdfData.text;
+            } else if (pdfLib.PDFParse) {
+                // Modern pdf-parse v2.x
+                const parser = new pdfLib.PDFParse({ data: file.buffer });
+                const pdfResult = await parser.getText();
+                rawText = typeof pdfResult === 'string' ? pdfResult : pdfResult?.text || '';
+                if (typeof parser.destroy === 'function') {
+                    await parser.destroy(); // Purge PDF worker threads from RAM
+                }
+            } else {
+                throw new Error("Unrecognized pdf-parse export structure.");
+            }
+        } else {
+            // Standard UTF-8 text extraction (.txt, etc.)
+            rawText = file.buffer.toString('utf-8');
+        }
+
+        console.log(`🧹 Scrubbing debris from extracted text...`);
+        const scrubbedText = scrubDocumentDebris(rawText);
 
         console.log(`✂️ Generating sliding context triplets...`);
         const triplets = createSlidingTriplets(scrubbedText);
@@ -95,7 +131,6 @@ app.post('/api/process-book', async (req, res) => {
 
         console.log(`🎟️ Issued HTTP 202 Ticket for "${title}"!`);
         
-        // Return 202 Accepted immediately to prevent browser 504 timeouts
         res.status(202).json({
             status: "accepted",
             message: "Manuscript successfully queued for background vocal rendering.",
@@ -106,29 +141,21 @@ app.post('/api/process-book', async (req, res) => {
 
     } catch (error) {
         console.error("❌ Ingestion Crash:", error);
-        res.status(500).json({ error: "Internal Server Error during manuscript ingestion." });
+        res.status(500).json({ error: "Internal Server Error during document parsing: " + error.message });
     }
 });
 
-/**
- * REAL-TIME SSE PROGRESS ROUTE
- * Keeps a live network pipe open to stream rendering status to React.
- */
 app.get('/api/status/:book_title', async (req, res) => {
     const bookTitle = decodeURIComponent(req.params.book_title);
 
-    // 1. Mandatory SSE headers to prevent HTTP socket closure
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'keep-alive');
     res.flushHeaders();
 
-    console.log(`📡 [SSE Connected] Client listening to progress for: "${bookTitle}"`);
-
     const progressTimer = setInterval(async () => {
         const client = await pool.connect();
         try {
-            // Count completed vs total chunks matching this exact book_title
             const { rows } = await client.query(`
                 SELECT 
                     COUNT(*) FILTER (WHERE status = 'completed' OR status = 'archived') AS done,
@@ -141,31 +168,25 @@ app.get('/api/status/:book_title', async (req, res) => {
             const total = Number(rows[0].total);
             const percent = total > 0 ? Math.floor((done / total) * 100) : 0;
 
-            // SSE strict formatting: must start with "data: " and end with double newline
             const payload = JSON.stringify({ processed: done, total, percent, status: percent === 100 ? 'READY' : 'PROCESSING' });
             res.write(`data: ${payload}\n\n`);
 
             if (percent === 100 && total > 0) {
-                console.log(`🏁 [SSE Terminated] Rendering complete for "${bookTitle}". Closing socket.`);
                 clearInterval(progressTimer);
                 res.end();
             }
         } catch (err) {
-            console.error(`⚠️ [SSE Error] Database poll failed for "${bookTitle}":`, err.message);
+            console.error(`⚠️ [SSE Error]:`, err.message);
         } finally {
             client.release();
         }
-    }, 1000); // Poll DB and push status packet every 1 second
+    }, 1000);
 
-    // Memory Leak Protection: Kill database poller if the user closes their browser tab
-    req.on('close', () => {
-        console.log(`🔌 [SSE Client Disconnected] Stopped polling for: "${bookTitle}"`);
-        clearInterval(progressTimer);
-    });
+    req.on('close', () => clearInterval(progressTimer));
 });
 
 app.listen(PORT, async () => {
     await initDB();
     startDispatcherDaemon();
-    console.log(`🚀 Asynchronous Express API Server running on http://localhost:${PORT}`);
+    console.log(`🚀 Binary Express Gateway running on http://localhost:${PORT}`);
 });

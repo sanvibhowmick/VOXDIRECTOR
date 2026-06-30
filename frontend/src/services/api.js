@@ -3,11 +3,20 @@ const BASE_URL = 'http://localhost:5000/api';
 /**
  * Uploads raw book text to Express and receives the HTTP 202 Ticket.
  */
-export async function uploadManuscript(title, rawText) {
+/**
+ * Packages the physical binary file into FormData and transmits to Express.
+ */
+export async function uploadManuscript(file, title, voice) {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('title', title);
+    formData.append('voice', voice || 'nova');
+
     const res = await fetch(`${BASE_URL}/process-book`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title, raw_text: rawText })
+        // ⚠️ CRITICAL INTERVIEW NOTE: Never manually set 'Content-Type': 'multipart/form-data' here!
+        // The browser must automatically compute and inject the exact binary boundary string.
+        body: formData
     });
 
     if (!res.ok) {

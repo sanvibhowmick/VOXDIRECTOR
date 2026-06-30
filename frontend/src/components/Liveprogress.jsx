@@ -1,59 +1,54 @@
 import React, { useState, useEffect, useRef } from "react";
 import { Check } from "lucide-react";
+import { subscribeToProgress } from "../services/api";
 
 const STAGES = ["Reading manuscript", "Casting the voice", "Mastering audio"];
-const TOTAL_MS = 6600;
 
 /**
- * LiveProgress
- *
- * Props:
- *   bookData  — { title, voice }
- *   onComplete({ duration }) — fired when animation finishes
+ * Enterprise LiveProgress Dashboard
+ * Driven by real-time Express Server-Sent Events (SSE).
  */
 export default function LiveProgress({ bookData, onComplete }) {
   const [percent, setPercent] = useState(0);
-  const startRef = useRef(null);
-  const doneRef  = useRef(false);
+  const [error, setError] = useState("");
+  const doneRef = useRef(false);
+
+  // Safely resolve the title string whether App.jsx passes an object or raw text
+  const title = typeof bookData === "string" 
+    ? bookData 
+    : bookData?.title || bookData?.book_title || "Untitled";
 
   useEffect(() => {
-    const reduceMotion =
-      typeof window !== "undefined" &&
-      window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
-
-    const finish = () => {
-      if (doneRef.current) return;
-      doneRef.current = true;
-      const minutes = 3 + Math.floor(Math.random() * 9);
-      const seconds = Math.floor(Math.random() * 60);
-      onComplete?.({ duration: `${minutes}:${seconds.toString().padStart(2, "0")}` });
-    };
-
-    if (reduceMotion) {
-      setPercent(100);
-      const t = setTimeout(finish, 400);
-      return () => clearTimeout(t);
-    }
-
-    let raf;
-    const tick = (now) => {
-      if (!startRef.current) startRef.current = now;
-      const elapsed = now - startRef.current;
-      const pct = Math.min(100, (elapsed / TOTAL_MS) * 100);
-      setPercent(pct);
-      if (pct < 100) {
-        raf = requestAnimationFrame(tick);
-      } else {
-        setTimeout(finish, 500);
+    // 1. Open the live Server-Sent Events (SSE) socket to Express
+    const unsubscribe = subscribeToProgress(
+      title,
+      (incomingPacket) => {
+        // Live updates driven strictly by PostgreSQL chunk completion counts!
+        setPercent(incomingPacket.percent || 0);
+      },
+      () => {
+        // Express confirmed 100% Byte-Stitching is complete
+        if (doneRef.current) return;
+        doneRef.current = true;
+        
+        setTimeout(() => {
+          onComplete?.({ duration: "Ready" });
+        }, 600); // 600ms buffer to let the final SVG ring animation complete smoothly
+      },
+      (streamErr) => {
+        console.error("⚠️ [SSE Network Drop]:", streamErr);
+        setError("Connection interrupted. Synthesis running in background...");
       }
-    };
-    raf = requestAnimationFrame(tick);
-    return () => raf && cancelAnimationFrame(raf);
-  }, [onComplete]);
+    );
 
-  const stageIndex  = Math.min(STAGES.length - 1, Math.floor((percent / 100) * STAGES.length));
+    // Teardown network socket cleanly if the user navigates away or unmounts
+    return () => unsubscribe();
+  }, [title, onComplete]);
+
+  // Map progress percentage dynamically to the 3 visual production stages
+  const stageIndex = percent < 30 ? 0 : percent < 85 ? 1 : 2;
   const circumference = 2 * Math.PI * 54;
-  const offset      = circumference * (1 - percent / 100);
+  const offset = circumference * (1 - percent / 100);
 
   return (
     <div className="vox-card lp-card">
@@ -185,17 +180,17 @@ export default function LiveProgress({ bookData, onComplete }) {
             strokeDasharray={circumference}
             strokeDashoffset={offset}
             stroke="var(--amber)"
-            style={{ transition: "stroke-dashoffset 0.1s linear" }}
+            style={{ transition: "stroke-dashoffset 0.3s cubic-bezier(0.4, 0, 0.2, 1)" }}
           />
         </svg>
         <div className="lp-pct">{Math.round(percent)}%</div>
       </div>
 
       <div className="lp-title">
-        Narrating {bookData?.title || "your book"}
+        Narrating "{title}"
       </div>
       <div className="lp-sub" aria-live="polite">
-        {STAGES[stageIndex]}…
+        {error ? <span style={{ color: "#d32f2f" }}>{error}</span> : `${STAGES[stageIndex]}…`}
       </div>
 
       {/* Stage checklist */}

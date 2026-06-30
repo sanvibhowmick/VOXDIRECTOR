@@ -1,11 +1,12 @@
 import React, { useState } from "react";
 import Navbar from "./components/Navbar";
 import Hero from "./components/Hero";
-import BookDropzone from "./components/bookDropzone";
+import BookDropzone from "./components/BookDropzone";
 import LiveProgress from "./components/Liveprogress";
 import MasterPlayer from "./components/Masterplayer";
-import "./dist/globals.css"
+import "./dist/globals.css";
 import heroImg from "./dist/image.jpg";
+import { uploadManuscript } from "./services/api";
 
 export default function App() {
   const [screen,   setScreen]   = useState("home");
@@ -14,7 +15,23 @@ export default function App() {
  
   const navStatus = { home: "idle", generating: "generating", player: "ready" }[screen];
  
-  const handleGenerate = (data) => { setBookData(data); setScreen("generating"); };
+  /**
+   * BINARY RELAY: Ships physical hard drive File object directly to Express Multer
+   */
+  const handleGenerate = async ({ file, title, voice }) => {
+    setBookData({ title, voice });
+    setScreen("generating");
+
+    try {
+      console.log(`🚀 [App.jsx] Transmitting binary "${file.name}" to Express Gateway...`);
+      await uploadManuscript(file, title, voice);
+    } catch (err) {
+      console.error("❌ Transmission failed:", err);
+      alert(`Failed to send manuscript to server:\n${err.message}`);
+      setScreen("home");
+    }
+  };
+
   const handleComplete = (res)  => { setResult(res);    setScreen("player");     };
   const handleReset    = ()     => { setBookData(null); setResult(null); setScreen("home"); };
  
