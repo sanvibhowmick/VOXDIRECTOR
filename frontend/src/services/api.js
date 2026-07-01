@@ -1,5 +1,5 @@
 // frontend/src/services/api.js
-const API_BASE = "http://localhost:5000";
+const API_BASE = "https://voxdirector-backend.onrender.com";
 
 export const uploadManuscript = async (file, title, voice) => {
   const formData = new FormData();
