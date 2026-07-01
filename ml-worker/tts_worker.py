@@ -1,5 +1,6 @@
 import os
 import re
+import base64
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 import edge_tts
@@ -65,14 +66,6 @@ async def synthesize_audio(req: TTSRequest):
         EMOTION_SETTINGS["neutral"]
     )
 
-    output_dir = os.path.join(os.path.dirname(__file__), "output_audio")
-    os.makedirs(output_dir, exist_ok=True)
-
-    output_path = os.path.join(
-        output_dir,
-        f"chunk_{req.chunk_id}.mp3"
-    )
-
     try:
         final_payload = b""
 
@@ -120,15 +113,14 @@ async def synthesize_audio(req: TTSRequest):
                 settings["rate"]
             )
 
-        # Write fused binary directly to disk
-        with open(output_path, "wb") as f:
-            f.write(final_payload)
+        # Encode the raw bytes to Base64 to send over HTTP
+        encoded_audio = base64.b64encode(final_payload).decode('utf-8')
 
-        print(f"✅ Audio chunk successfully saved to: {output_path}")
+        print(f"✅ Audio chunk {req.chunk_id} successfully encoded for transport.")
 
         return {
             "status": "success",
-            "file_path": output_path,
+            "audio_base64": encoded_audio,
             "chunk_id": req.chunk_id
         }
 
