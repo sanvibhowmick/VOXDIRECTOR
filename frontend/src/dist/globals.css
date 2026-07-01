@@ -1,0 +1,322 @@
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:ital,wght@0,300;0,600;1,300;1,600&family=IBM+Plex+Mono:wght@400;500&family=Inter:wght@300;400;500&display=swap');
+
+/* ── Design tokens ── */
+:root {
+  --amber:       #C8862F;
+  --amber-lt:    #D4A94A;
+  --amber-dim:   rgba(200,134,47,0.18);
+  --rust:        #B85C38;
+  --ink:         #1A1209;
+  --ink-dim:     #6B5A44;
+  --bone:        #F3ECE0;
+  --cream:       #FBF8F2;
+  --void:        #14110D;
+
+  --line:        rgba(245,237,216,0.12);
+  --line-strong: rgba(245,237,216,0.22);
+
+  --font-sans:  'Inter', system-ui, sans-serif;
+  --font-serif: 'Fraunces', Georgia, serif;
+  --font-mono:  'IBM Plex Mono', 'Courier New', monospace;
+}
+
+/* ── Reset ── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html { scroll-behavior: smooth; }
+
+body {
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  background: var(--void);
+  color: var(--bone);
+}
+
+/* ────────────────────────────────────────────
+   FULL-PAGE BACKGROUND
+   ──────────────────────────────────────────── */
+.app-root {
+  position: relative;
+  min-height: 100vh;
+}
+
+/* Fixed background image — stays in place as page scrolls */
+.app-bg {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+}
+
+.app-bg-img {
+  width: 100%; height: 100%;
+  object-fit: cover;
+  object-position: center 25%;
+  filter: sepia(15%) brightness(0.55) contrast(1.1) saturate(0.9);
+}
+
+/* Multi-layer veil: bottom-heavy dark gradient + subtle vignette edges */
+.app-bg-veil {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(
+      to bottom,
+      rgba(13,10,6,0.30) 0%,
+      rgba(13,10,6,0.50) 40%,
+      rgba(13,10,6,0.75) 75%,
+      rgba(13,10,6,0.90) 100%
+    ),
+    radial-gradient(
+      ellipse at center,
+      transparent 40%,
+      rgba(13,10,6,0.45) 100%
+    );
+}
+
+/* Everything above the background */
+.app-root > *:not(.app-bg) {
+  position: relative;
+  z-index: 1;
+}
+
+/* ────────────────────────────────────────────
+   NAVBAR (defined in Navbar.jsx, tokens here)
+   ──────────────────────────────────────────── */
+
+/* ────────────────────────────────────────────
+   HERO HEADER
+   ──────────────────────────────────────────── */
+.app-hero {
+  text-align: center;
+  padding: 80px 24px 72px;
+  max-width: 640px;
+  margin: 0 auto;
+}
+
+.app-eyebrow {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 4px;
+  text-transform: uppercase;
+  color: var(--amber-lt);
+  margin-bottom: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+}
+.app-eyebrow-line {
+  display: block;
+  width: 32px; height: 1px;
+  background: var(--amber-lt);
+  opacity: 0.5;
+  flex-shrink: 0;
+}
+
+.app-headline {
+  font-family: var(--font-serif);
+  font-weight: 600;
+  font-size: clamp(42px, 7.5vw, 72px);
+  line-height: 1.04;
+  letter-spacing: -1.5px;
+  color: #F7EDD2;
+  margin-bottom: 18px;
+  text-shadow: 0 2px 24px rgba(13,10,6,0.5);
+}
+.app-headline em {
+  font-style: italic;
+  font-weight: 300;
+  color: var(--amber-lt);
+}
+
+.app-sub {
+  font-size: 15.5px;
+  font-weight: 300;
+  color: rgba(243,236,224,0.68);
+  line-height: 1.65;
+  max-width: 380px;
+  margin: 0 auto 36px;
+}
+
+.app-cta-primary {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 2.5px;
+  text-transform: uppercase;
+  background: var(--amber-lt);
+  color: #1A1209;
+  border: none;
+  padding: 14px 32px;
+  border-radius: 2px;
+  cursor: pointer;
+  transition: background 0.2s ease, transform 0.15s ease;
+}
+.app-cta-primary:hover  { background: #E8C060; }
+.app-cta-primary:active { transform: scale(0.97); }
+
+/* ────────────────────────────────────────────
+   MAIN CONTENT
+   ──────────────────────────────────────────── */
+.app-main {
+  padding: 0 24px 80px;
+  max-width: 520px;
+  margin: 0 auto;
+}
+
+/* Section label */
+.app-section-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  color: var(--amber-lt);
+  opacity: 0.8;
+  margin-bottom: 20px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.app-section-line {
+  flex: 1;
+  height: 1px;
+  background: var(--line-strong);
+  display: block;
+}
+
+/* Step cards */
+.app-steps {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 12px;
+  margin-bottom: 44px;
+}
+.app-step-card {
+  background: rgba(13,10,6,0.52);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 20px 16px;
+}
+.app-step-num {
+  font-family: var(--font-serif);
+  font-size: 30px;
+  font-weight: 300;
+  font-style: italic;
+  color: rgba(212,169,74,0.25);
+  line-height: 1;
+  margin-bottom: 10px;
+}
+.app-step-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--bone);
+  margin-bottom: 4px;
+}
+.app-step-desc {
+  font-size: 12px;
+  color: rgba(243,236,224,0.45);
+  line-height: 1.55;
+}
+
+/* ────────────────────────────────────────────
+   SHARED CARD SHELL — glass over the photo
+   ──────────────────────────────────────────── */
+.vox-card {
+  background: rgba(13,10,6,0.60);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  border: 1px solid var(--line-strong);
+  border-radius: 20px;
+  padding: 28px 24px;
+  width: 100%;
+  max-width: 480px;
+  margin: 0 auto;
+  color: var(--bone);
+}
+
+/* ── Form primitives ── */
+.vox-field { margin-bottom: 18px; }
+
+.vox-label {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: rgba(243,236,224,0.5);
+  margin-bottom: 7px;
+}
+
+.vox-input {
+  width: 100%;
+  padding: 10px 14px;
+  font-family: var(--font-sans);
+  font-size: 14px;
+  color: var(--bone);
+  background: rgba(243,236,224,0.07);
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  outline: none;
+  transition: border-color 0.18s ease, box-shadow 0.18s ease;
+}
+.vox-input::placeholder { color: rgba(243,236,224,0.3); }
+.vox-input:focus {
+  border-color: var(--amber);
+  box-shadow: 0 0 0 3px rgba(200,134,47,0.18);
+}
+.vox-input.error {
+  border-color: #E05252;
+  box-shadow: 0 0 0 3px rgba(224,82,82,0.15);
+}
+
+.vox-field-error {
+  font-size: 12px;
+  color: #E07070;
+  margin-top: 5px;
+}
+
+/* ── Primary button ── */
+.vox-btn-primary {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  padding: 14px 20px;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  font-weight: 500;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: #1A1209;
+  background: var(--amber-lt);
+  border: none;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: background 0.2s ease, transform 0.15s ease;
+}
+.vox-btn-primary:hover  { background: #E8C060; }
+.vox-btn-primary:active { transform: scale(0.98); }
+.vox-btn-primary:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* ── Footer ── */
+.app-footer {
+  position: relative;
+  z-index: 1;
+  border-top: 1px solid var(--line);
+  text-align: center;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 2.5px;
+  text-transform: uppercase;
+  color: rgba(243,236,224,0.25);
+  padding: 24px;
+}
