@@ -88,7 +88,7 @@ async def synthesize_audio(req: TTSRequest):
                         .replace('”', '')
                     )
 
-                    # Render ALL speech bytes with the single male dialogue actor
+                    # Render ALL speech bytes with the dialogue configs
                     final_payload += await stream_text_to_bytes(
                         raw_speech,
                         NARRATOR_VOICE,
@@ -132,9 +132,13 @@ async def synthesize_audio(req: TTSRequest):
 if __name__ == "__main__":
     import uvicorn
 
+    # Dynamically resolve the port assigned by the cloud router, fallback to 8001 locally
+    cloud_port = int(os.environ.get("PORT", 8001))
+
+    # Set host to 0.0.0.0 to accept traffic from outside the deployment container
     uvicorn.run(
         "tts_worker:app",
-        host="127.0.0.1",
-        port=8001,
+        host="0.0.0.0",
+        port=cloud_port,
         reload=True
     )
