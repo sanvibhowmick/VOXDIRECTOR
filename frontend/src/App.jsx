@@ -4,7 +4,7 @@ import Hero from "./components/Hero";
 import BookDropzone from "./components/BookDropzone";
 import LiveProgress from "./components/Liveprogress";
 import MasterPlayer from "./components/Masterplayer";
-import "./dist/globals.css";
+import "./globals.css";
 import heroImg from "./dist/image.jpg";
 import { uploadManuscript } from "./services/api";
 
