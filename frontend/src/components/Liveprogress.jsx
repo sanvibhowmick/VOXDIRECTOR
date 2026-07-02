@@ -4,24 +4,31 @@ import { checkJobStatus, getAudioUrl } from "../services/api";
 
 const STAGES = ["Reading manuscript", "Casting the voice", "Mastering audio"];
 
-export default function LiveProgress({ bookData, onComplete }) {
+// 🆕 Accept onReset as a prop
+export default function LiveProgress({ bookData, onComplete, onReset }) {
   const [percent, setPercent] = useState(0);
   const [error, setError] = useState("");
+  const [isDead, setIsDead] = useState(false); // 🆕 Track if the job completely failed
 
   const title = typeof bookData === "string" 
     ? bookData 
     : bookData?.title || "Untitled";
 
   useEffect(() => {
-    if (!title) return;
+    if (!title || isDead) return;
 
     const interval = setInterval(async () => {
       try {
         const data = await checkJobStatus(title);
         
-        if (data.percent !== undefined) {
-          setPercent(data.percent);
-          setError(""); 
+        if (data.percent !== undefined) setPercent(data.percent);
+
+        // 🆕 Handle the dead job state from the backend
+        if (data.status === 'failed') {
+            clearInterval(interval);
+            setIsDead(true);
+            setError(`Generation failed. ${data.failed} chunks could not be processed.`);
+            return;
         }
 
         if (data.status === 'completed' || data.status === 'READY') {
@@ -36,12 +43,12 @@ export default function LiveProgress({ bookData, onComplete }) {
         }
       } catch (err) {
         console.error("Polling error:", err);
-        setError("Connection interrupted. Synthesis running in background...");
+        setError("Connection interrupted. Trying to reconnect...");
       }
     }, 5000); 
 
     return () => clearInterval(interval);
-  }, [title, onComplete]);
+  }, [title, onComplete, isDead]);
 
   const stageIndex = percent < 30 ? 0 : percent < 85 ? 1 : 2;
   const circumference = 2 * Math.PI * 54;
@@ -50,6 +57,7 @@ export default function LiveProgress({ bookData, onComplete }) {
   return (
     <div className="vox-card lp-card">
       <style>{`
+        /* ... Keep all your existing CSS exactly the same ... */
         .lp-card { 
           text-align: center; 
           padding: 32px 24px;
@@ -58,11 +66,9 @@ export default function LiveProgress({ bookData, onComplete }) {
           align-items: center;
         }
 
-        /* ── Ring ── */
         .lp-ring-wrap {
           position: relative;
-          width: 132px; 
-          height: 132px;
+          width: 132px; height: 132px;
           margin: 0 auto 24px;
           display: flex;
           align-items: center;
@@ -83,7 +89,6 @@ export default function LiveProgress({ bookData, onComplete }) {
           z-index: 2;
         }
 
-        /* ── Text ── */
         .lp-title {
           font-size: 16px;
           font-weight: 600;
@@ -91,8 +96,6 @@ export default function LiveProgress({ bookData, onComplete }) {
           margin-bottom: 6px;
           line-height: 1.4;
           width: 100%;
-          
-          /* NEW: Gracefully handles extremely long book titles */
           display: -webkit-box;
           -webkit-line-clamp: 2;
           -webkit-box-orient: vertical;
@@ -109,7 +112,6 @@ export default function LiveProgress({ bookData, onComplete }) {
           line-height: 1.4;
         }
 
-        /* ── Stage list ── */
         .lp-stages {
           list-style: none;
           padding: 0;
@@ -152,13 +154,13 @@ export default function LiveProgress({ bookData, onComplete }) {
           50%      { box-shadow: 0 0 0 6px rgba(200,134,47,0);   }
         }
 
-        /* ── Waveform bars ── */
         .lp-bars {
           display: flex;
           align-items: flex-end;
           justify-content: center;
           gap: 4px;
           height: 24px;
+          margin-bottom: 20px;
         }
         .lp-bar {
           width: 3px;
@@ -170,37 +172,48 @@ export default function LiveProgress({ bookData, onComplete }) {
           0%, 100% { transform: scaleY(0.25); }
           50%      { transform: scaleY(1);    }
         }
-
-        @media (prefers-reduced-motion: reduce) {
-          .lp-stage.active .lp-stage-icon,
-          .lp-bar { animation: none; }
+        
+        /* 🆕 CSS for the escape hatch button */
+        .lp-cancel-btn {
+          background: none;
+          border: 1px solid var(--line-strong);
+          color: var(--ink-dim);
+          font-size: 12px;
+          padding: 8px 16px;
+          border-radius: 6px;
+          cursor: pointer;
+          transition: all 0.2s ease;
+        }
+        .lp-cancel-btn:hover {
+          color: var(--rust);
+          border-color: var(--rust);
+          background: rgba(211, 47, 47, 0.05);
         }
       `}</style>
       
-      {/* Progress ring */}
       <div
         className="lp-ring-wrap"
         role="progressbar"
         aria-valuenow={Math.round(percent)}
         aria-valuemin={0}
         aria-valuemax={100}
-        aria-label="Narration progress"
       >
         <svg width="132" height="132" viewBox="0 0 132 132" aria-hidden="true">
           <circle cx="66" cy="66" r="54" fill="none" strokeWidth="8" stroke="var(--line)" />
-          <circle cx="66" cy="66" r="54" fill="none" strokeWidth="8" strokeLinecap="round" strokeDasharray={circumference} strokeDashoffset={offset} stroke="var(--amber)" style={{ transition: "stroke-dashoffset 0.3s cubic-bezier(0.4, 0, 0.2, 1)" }} />
+          {/* 🆕 If the job is dead, turn the ring red (var(--rust)) to indicate failure */}
+          <circle cx="66" cy="66" r="54" fill="none" strokeWidth="8" strokeLinecap="round" strokeDasharray={circumference} strokeDashoffset={offset} stroke={isDead ? "var(--rust)" : "var(--amber)"} style={{ transition: "stroke-dashoffset 0.3s cubic-bezier(0.4, 0, 0.2, 1)" }} />
         </svg>
         <div className="lp-pct">{Math.round(percent)}%</div>
       </div>
 
       <div className="lp-title">Narrating "{title}"</div>
       <div className="lp-sub" aria-live="polite">
-        {error ? <span style={{ color: "#d32f2f" }}>{error}</span> : `${STAGES[stageIndex]}...`}
+        {error ? <span style={{ color: "var(--rust)" }}>{error}</span> : `${STAGES[stageIndex]}...`}
       </div>
 
       <ul className="lp-stages">
         {STAGES.map((s, i) => (
-          <li key={s} className={`lp-stage ${i < stageIndex ? "done" : i === stageIndex ? "active" : ""}`}>
+          <li key={s} className={`lp-stage ${i < stageIndex ? "done" : i === stageIndex && !isDead ? "active" : ""}`}>
             <span className="lp-stage-icon">
               {i < stageIndex && <Check size={12} color="#FBF8F2" strokeWidth={3} />}
             </span>
@@ -209,16 +222,20 @@ export default function LiveProgress({ bookData, onComplete }) {
         ))}
       </ul>
 
-      {/* Waveform */}
-      <div className="lp-bars" aria-hidden="true">
-        {Array.from({ length: 9 }, (_, i) => (
-          <div
-            key={i}
-            className="lp-bar"
-            style={{ height: 24, animationDelay: `${i * 0.08}s` }}
-          />
-        ))}
-      </div>
+      {/* Hide the waveform if the job is dead */}
+      {!isDead && (
+        <div className="lp-bars" aria-hidden="true">
+          {Array.from({ length: 9 }, (_, i) => (
+            <div key={i} className="lp-bar" style={{ height: 24, animationDelay: `${i * 0.08}s` }} />
+          ))}
+        </div>
+      )}
+
+      {/* 🆕 The Escape Hatch */}
+      <button className="lp-cancel-btn" onClick={onReset}>
+        {isDead ? "Return Home" : "Cancel Generation"}
+      </button>
+
     </div>
   );
 }

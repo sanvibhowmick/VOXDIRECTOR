@@ -84,10 +84,10 @@ export const getBookStatus = async (req, res) => {
     
     const client = await pool.connect();
     try {
-        // We pull the done count, total count, and check if a cloud URL exists yet
         const { rows } = await client.query(`
             SELECT 
                 COUNT(*) FILTER (WHERE status = 'completed' OR status = 'archived') AS done,
+                COUNT(*) FILTER (WHERE status = 'failed') AS failed,
                 COUNT(*) AS total,
                 MAX(cloud_url) as cloud_url
             FROM book_chunks 
@@ -95,29 +95,26 @@ export const getBookStatus = async (req, res) => {
         `, [bookTitle]);
 
         const done = Number(rows[0].done);
+        const failed = Number(rows[0].failed);
         const total = Number(rows[0].total);
         const cloudUrl = rows[0].cloud_url;
+        
         const percent = total > 0 ? Math.floor((done / total) * 100) : 0;
 
         let status = 'processing';
         
-        // If the AI is done, but the finalizer is still uploading to Supabase
-        if (percent === 100 && !cloudUrl) {
+        // 🆕 THE DETECTOR: If everything is processed, but some failed, the job is dead.
+        if (total > 0 && (done + failed === total) && failed > 0) {
+            status = 'failed';
+        }
+        else if (percent === 100 && !cloudUrl) {
             status = 'finalizing';
         } 
-        // If the cloud URL is ready, the whole job is officially completed
         else if (percent === 100 && cloudUrl) {
             status = 'completed';
         }
 
-        // Return a clean, instant JSON response for the frontend to read
-        res.json({ 
-            processed: done, 
-            total, 
-            percent, 
-            status, 
-            cloudUrl 
-        });
+        res.json({ processed: done, total, percent, status, cloudUrl, failed });
 
     } catch (err) {
         console.error(`⚠️ Status check error:`, err.message);

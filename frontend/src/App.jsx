@@ -127,7 +127,7 @@ export default function App() {
         )}
  
         {screen === "generating" && (
-          <LiveProgress bookData={bookData} onComplete={handleComplete} />
+          <LiveProgress bookData={bookData} onComplete={handleComplete} onReset={handleReset} />
         )}
  
         {screen === "player" && (

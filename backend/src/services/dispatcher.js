@@ -22,7 +22,7 @@ const ML_WORKER_URL = process.env.ML_WORKER_URL;
 const TTS_WORKER_URL = process.env.TTS_WORKER_URL;
 
 // 🆕 Tweaked for max concurrency
-const BATCH_SIZE = 20; 
+const BATCH_SIZE = 10; 
 const POLLING_INTERVAL_MS = 2500;
 
 const MASTER_DIR = path.resolve(__dirname, '../../master_audiobooks');
