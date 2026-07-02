@@ -1,7 +1,6 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { createClient } from '@supabase/supabase-js';
 import dotenv from 'dotenv';
 
 dotenv.config();
@@ -9,14 +8,13 @@ dotenv.config();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Initialize Supabase Storage Client
-const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
-
+// Landing directory for stitched master audiobooks
 const MASTER_DIR = path.resolve(__dirname, '../../master_audiobooks');
 if (!fs.existsSync(MASTER_DIR)) {
     fs.mkdirSync(MASTER_DIR, { recursive: true });
 }
 
+// Mutex lock to prevent duplicate finalizer runs
 const activeJobs = new Set();
 
 export async function finalizeManuscript(pool, bookTitle) {
@@ -59,34 +57,21 @@ export async function finalizeManuscript(pool, bookTitle) {
 
         console.log(`🎉 [Finalizer] Master MP3 stitched: ${masterPath}`);
 
-        // --- STREAMING CLOUD UPLOAD LOGIC (Prevents RAM Crash!) ---
-        console.log(`☁️ [Finalizer] Streaming master file to Supabase Storage...`);
+        // --- 🆕 THE FREE TIER HACK: BYPASS SUPABASE STORAGE ---
+        console.log(`☁️ [Finalizer] Bypassing Supabase payload limits. Using ephemeral Render disk...`);
         
-        // Create a safe, web-friendly filename
-        const safeName = bookTitle.replace(/[^a-z0-9]/gi, '_').toLowerCase();
-        const cloudFileName = `${safeName}_${Date.now()}.mp3`;
+        // Render automatically injects this URL (e.g., https://voxdirector-backend.onrender.com)
+        // If it's missing (like when testing locally), we fallback to localhost
+        const baseUrl = process.env.RENDER_EXTERNAL_URL || `http://localhost:${process.env.PORT || 3000}`;
+        
+        // Encode the filename so spaces don't break the URL
+        const encodedFileName = encodeURIComponent(path.basename(masterPath));
+        const downloadUrl = `${baseUrl}/master_audiobooks/${encodedFileName}`;
 
-        // Use a ReadStream instead of readFileSync to stream the data like a garden hose
-        const fileStream = fs.createReadStream(masterPath);
+        console.log(`✅ [Finalizer] File ready! Temporary Free-Tier Link: ${downloadUrl}`);
+        // -----------------------------------------------------------
 
-        const { data, error } = await supabase.storage
-            .from('audiobooks') // Make sure this bucket is set to "Public" in Supabase!
-            .upload(cloudFileName, fileStream, { 
-                contentType: 'audio/mpeg',
-                duplex: 'half' // Required by Node.js for streaming uploads
-            });
-
-        if (error) throw error;
-
-        // Retrieve the permanent download URL
-        const { data: publicUrlData } = supabase.storage
-            .from('audiobooks')
-            .getPublicUrl(cloudFileName);
-
-        const permanentUrl = publicUrlData.publicUrl;
-        console.log(`✅ [Finalizer] Upload complete! Permanent Link: ${permanentUrl}`);
-        // -------------------------------
-
+        // Disk Cleanup: Delete the thousands of tiny chunk MP3s
         let swept = 0;
         for (const row of rows) {
             if (row.audio_path && fs.existsSync(row.audio_path)) {
@@ -98,8 +83,8 @@ export async function finalizeManuscript(pool, bookTitle) {
         }
         console.log(`🧹 [Garbage Collection] Reclaimed disk space from ${swept} chunks.`);
 
-        // --- NEW DB CLEANUP LOGIC (Single-Row Anchor Hack) ---
-        // 1. Pick exactly ONE chunk to act as the "memory" of the book, and save the URL there.
+        // --- 🆕 DB CLEANUP LOGIC (Single-Row Anchor Hack) ---
+        // 1. Pick exactly ONE chunk to act as the "memory" of the book, and save the Render URL there.
         await client.query(`
             UPDATE book_chunks 
             SET status = 'archived', cloud_url = $2
@@ -108,7 +93,7 @@ export async function finalizeManuscript(pool, bookTitle) {
                 WHERE book_title = $1 
                 LIMIT 1
             );
-        `, [bookTitle, permanentUrl]);
+        `, [bookTitle, downloadUrl]);
 
         // 2. Obliterate every other chunk for this book!
         const deleteRes = await client.query(`
