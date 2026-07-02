@@ -42,6 +42,7 @@ export async function finalizeManuscript(pool, bookTitle) {
         const masterPath = path.join(MASTER_DIR, `${bookTitle}.mp3`);
         const writeStream = fs.createWriteStream(masterPath);
 
+        // Stitching tiny chunk files into the master stream is memory-safe
         for (const row of rows) {
             if (row.audio_path && fs.existsSync(row.audio_path)) {
                 const buffer = fs.readFileSync(row.audio_path);
@@ -58,17 +59,22 @@ export async function finalizeManuscript(pool, bookTitle) {
 
         console.log(`🎉 [Finalizer] Master MP3 stitched: ${masterPath}`);
 
-        // --- NEW: CLOUD UPLOAD LOGIC ---
-        console.log(`☁️ [Finalizer] Uploading master file to Supabase Storage...`);
-        const fileBuffer = fs.readFileSync(masterPath);
+        // --- NEW: STREAMING CLOUD UPLOAD LOGIC (Prevents RAM Crash!) ---
+        console.log(`☁️ [Finalizer] Streaming master file to Supabase Storage...`);
         
         // Create a safe, web-friendly filename
         const safeName = bookTitle.replace(/[^a-z0-9]/gi, '_').toLowerCase();
         const cloudFileName = `${safeName}_${Date.now()}.mp3`;
 
+        // Use a ReadStream instead of readFileSync to stream the data like a garden hose
+        const fileStream = fs.createReadStream(masterPath);
+
         const { data, error } = await supabase.storage
             .from('audiobooks') // Make sure this bucket is set to "Public" in Supabase!
-            .upload(cloudFileName, fileBuffer, { contentType: 'audio/mpeg' });
+            .upload(cloudFileName, fileStream, { 
+                contentType: 'audio/mpeg',
+                duplex: 'half' // Required by Node.js for streaming uploads
+            });
 
         if (error) throw error;
 
