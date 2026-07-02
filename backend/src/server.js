@@ -5,6 +5,7 @@ import { initDB } from './config/db.js';
 import { startDispatcherDaemon } from './services/dispatcher.js';
 import bookRoutes from './routes/bookRoutes.js';
 import { fileURLToPath } from 'url';
+import path from 'path';
 
 dotenv.config();
 
