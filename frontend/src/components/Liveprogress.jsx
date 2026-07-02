@@ -73,6 +73,7 @@ export default function LiveProgress({ bookData, onComplete, onReset }) {
           display: flex;
           align-items: center;
           justify-content: center;
+          
         }
         .lp-ring-wrap svg { 
           position: absolute;
@@ -84,7 +85,7 @@ export default function LiveProgress({ bookData, onComplete, onReset }) {
           font-family: 'IBM Plex Mono', monospace;
           font-size: 26px;
           font-weight: 600;
-          color: var(--ink);
+          color: var(--amber);
           letter-spacing: -1px;
           z-index: 2;
         }
@@ -92,7 +93,7 @@ export default function LiveProgress({ bookData, onComplete, onReset }) {
         .lp-title {
           font-size: 16px;
           font-weight: 600;
-          color: var(--ink);
+          color: var(--amber);
           margin-bottom: 6px;
           line-height: 1.4;
           width: 100%;
