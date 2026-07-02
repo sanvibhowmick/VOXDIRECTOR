@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from "react";
 import { Check } from "lucide-react";
-// 🆕 Swapped out SSE for your bulletproof polling function
 import { checkJobStatus, getAudioUrl } from "../services/api";
 
 const STAGES = ["Reading manuscript", "Casting the voice", "Mastering audio"];
@@ -13,7 +12,6 @@ export default function LiveProgress({ bookData, onComplete }) {
     ? bookData 
     : bookData?.title || "Untitled";
 
-  // 🆕 Bulletproof Polling Implementation
   useEffect(() => {
     if (!title) return;
 
@@ -21,30 +19,26 @@ export default function LiveProgress({ bookData, onComplete }) {
       try {
         const data = await checkJobStatus(title);
         
-        // Update the progress wheel
         if (data.percent !== undefined) {
           setPercent(data.percent);
-          setError(""); // Clear any temporary network errors
+          setError(""); 
         }
 
-        // If the backend says the book is completely finished
         if (data.status === 'completed' || data.status === 'READY') {
           clearInterval(interval);
           
           setTimeout(() => {
             onComplete?.({ 
               duration: "Ready",
-              // Use the permanent cloud URL if available, fallback to direct API route
               audioUrl: data.cloudUrl || getAudioUrl(title) 
             });
           }, 600);
         }
       } catch (err) {
         console.error("Polling error:", err);
-        // Don't crash! Just show a gentle background warning while we retry
         setError("Connection interrupted. Synthesis running in background...");
       }
-    }, 5000); // Checks exactly every 5 seconds
+    }, 5000); 
 
     return () => clearInterval(interval);
   }, [title, onComplete]);
@@ -56,58 +50,82 @@ export default function LiveProgress({ bookData, onComplete }) {
   return (
     <div className="vox-card lp-card">
       <style>{`
-        .lp-card { text-align: center; }
+        .lp-card { 
+          text-align: center; 
+          padding: 32px 24px;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+        }
 
         /* ── Ring ── */
         .lp-ring-wrap {
           position: relative;
-          width: 132px; height: 132px;
-          margin: 4px auto 22px;
-        }
-        .lp-ring-wrap svg { transform: rotate(-90deg); display: block; }
-
-        .lp-pct {
-          position: absolute;
-          inset: 0;
+          width: 132px; 
+          height: 132px;
+          margin: 0 auto 24px;
           display: flex;
           align-items: center;
           justify-content: center;
+        }
+        .lp-ring-wrap svg { 
+          position: absolute;
+          top: 0; left: 0;
+          transform: rotate(-90deg); 
+        }
+
+        .lp-pct {
           font-family: 'IBM Plex Mono', monospace;
-          font-size: 22px;
-          font-weight: 500;
+          font-size: 26px;
+          font-weight: 600;
           color: var(--ink);
+          letter-spacing: -1px;
+          z-index: 2;
         }
 
         /* ── Text ── */
         .lp-title {
-          font-size: 15px;
+          font-size: 16px;
           font-weight: 600;
           color: var(--ink);
-          margin-bottom: 4px;
+          margin-bottom: 6px;
+          line-height: 1.4;
+          width: 100%;
+          
+          /* NEW: Gracefully handles extremely long book titles */
+          display: -webkit-box;
+          -webkit-line-clamp: 2;
+          -webkit-box-orient: vertical;
+          overflow: hidden;
+          text-overflow: ellipsis;
         }
+        
         .lp-sub {
-          font-size: 12.5px;
+          font-size: 13px;
           color: var(--amber);
           font-weight: 500;
-          margin-bottom: 24px;
+          margin-bottom: 28px;
           min-height: 18px;
+          line-height: 1.4;
         }
 
         /* ── Stage list ── */
         .lp-stages {
           list-style: none;
           padding: 0;
-          margin: 0 0 24px;
+          margin: 0 0 28px;
           display: flex;
           flex-direction: column;
-          gap: 10px;
+          gap: 12px;
           text-align: left;
+          width: 100%;
+          max-width: 220px;
         }
         .lp-stage {
           display: flex;
           align-items: center;
-          gap: 10px;
-          font-size: 13.5px;
+          gap: 12px;
+          font-size: 14px;
           color: var(--ink-dim);
           transition: color 0.2s ease;
         }
@@ -115,7 +133,7 @@ export default function LiveProgress({ bookData, onComplete }) {
         .lp-stage.active { color: var(--amber); font-weight: 500; }
 
         .lp-stage-icon {
-          width: 18px; height: 18px;
+          width: 20px; height: 20px;
           border-radius: 50%;
           display: flex;
           align-items: center;
@@ -131,7 +149,7 @@ export default function LiveProgress({ bookData, onComplete }) {
         }
         @keyframes lpPulse {
           0%, 100% { box-shadow: 0 0 0 0   rgba(200,134,47,0.3); }
-          50%      { box-shadow: 0 0 0 5px rgba(200,134,47,0);   }
+          50%      { box-shadow: 0 0 0 6px rgba(200,134,47,0);   }
         }
 
         /* ── Waveform bars ── */
@@ -139,8 +157,8 @@ export default function LiveProgress({ bookData, onComplete }) {
           display: flex;
           align-items: flex-end;
           justify-content: center;
-          gap: 3px;
-          height: 22px;
+          gap: 4px;
+          height: 24px;
         }
         .lp-bar {
           width: 3px;
@@ -177,14 +195,14 @@ export default function LiveProgress({ bookData, onComplete }) {
 
       <div className="lp-title">Narrating "{title}"</div>
       <div className="lp-sub" aria-live="polite">
-        {error ? <span style={{ color: "#d32f2f" }}>{error}</span> : `${STAGES[stageIndex]}…`}
+        {error ? <span style={{ color: "#d32f2f" }}>{error}</span> : `${STAGES[stageIndex]}...`}
       </div>
 
       <ul className="lp-stages">
         {STAGES.map((s, i) => (
           <li key={s} className={`lp-stage ${i < stageIndex ? "done" : i === stageIndex ? "active" : ""}`}>
             <span className="lp-stage-icon">
-              {i < stageIndex && <Check size={11} color="#FBF8F2" strokeWidth={3} />}
+              {i < stageIndex && <Check size={12} color="#FBF8F2" strokeWidth={3} />}
             </span>
             {s}
           </li>
@@ -197,7 +215,7 @@ export default function LiveProgress({ bookData, onComplete }) {
           <div
             key={i}
             className="lp-bar"
-            style={{ height: 22, animationDelay: `${i * 0.08}s` }}
+            style={{ height: 24, animationDelay: `${i * 0.08}s` }}
           />
         ))}
       </div>
