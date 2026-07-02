@@ -1,23 +1,24 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { createClient } from '@supabase/supabase-js';
+import dotenv from 'dotenv';
+
+dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Landing directory for stitched master audiobooks
+// Initialize Supabase Storage Client
+const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+
 const MASTER_DIR = path.resolve(__dirname, '../../master_audiobooks');
 if (!fs.existsSync(MASTER_DIR)) {
     fs.mkdirSync(MASTER_DIR, { recursive: true });
 }
 
-// In-memory Mutex to prevent race-condition double stitching
 const activeJobs = new Set();
 
-/**
- * Compiles thousands of individual chunk MP3s into a single master download.
- * Executes hard-drive garbage collection upon successful compilation.
- */
 export async function finalizeManuscript(pool, bookTitle) {
     if (activeJobs.has(bookTitle)) return;
     activeJobs.add(bookTitle);
@@ -26,7 +27,6 @@ export async function finalizeManuscript(pool, bookTitle) {
 
     const client = await pool.connect();
     try {
-        // Pull all rendered MP3 file paths strictly ordered by sentence index
         const { rows } = await client.query(`
             SELECT id, audio_path 
             FROM book_chunks 
@@ -35,15 +35,13 @@ export async function finalizeManuscript(pool, bookTitle) {
         `, [bookTitle]);
 
         if (rows.length === 0) {
-            console.warn(`⚠️ [Finalizer] Aborted: No completed audio chunks found for "${bookTitle}".`);
+            console.warn(`⚠️ [Finalizer] Aborted: No completed chunks found for "${bookTitle}".`);
             return;
         }
 
-        // FIX: Match the exact bookTitle instead of using safeTitle!
         const masterPath = path.join(MASTER_DIR, `${bookTitle}.mp3`);
         const writeStream = fs.createWriteStream(masterPath);
 
-        // Stream binary frames sequentially into the master MP3 (~15MB RAM footprint)
         for (const row of rows) {
             if (row.audio_path && fs.existsSync(row.audio_path)) {
                 const buffer = fs.readFileSync(row.audio_path);
@@ -53,15 +51,36 @@ export async function finalizeManuscript(pool, bookTitle) {
 
         writeStream.end();
 
-        // Hold execution until the OS kernel confirms the file is written to disk
         await new Promise((resolve, reject) => {
             writeStream.on('finish', resolve);
             writeStream.on('error', reject);
         });
 
-        console.log(`🎉 [Finalizer] Master MP3 published: ${masterPath}`);
+        console.log(`🎉 [Finalizer] Master MP3 stitched: ${masterPath}`);
 
-        // Hard Drive Garbage Collection: Sweep temporary chunk files off the drive
+        // --- NEW: CLOUD UPLOAD LOGIC ---
+        console.log(`☁️ [Finalizer] Uploading master file to Supabase Storage...`);
+        const fileBuffer = fs.readFileSync(masterPath);
+        
+        // Create a safe, web-friendly filename
+        const safeName = bookTitle.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+        const cloudFileName = `${safeName}_${Date.now()}.mp3`;
+
+        const { data, error } = await supabase.storage
+            .from('audiobooks') // Make sure this bucket is set to "Public" in Supabase!
+            .upload(cloudFileName, fileBuffer, { contentType: 'audio/mpeg' });
+
+        if (error) throw error;
+
+        // Retrieve the permanent download URL
+        const { data: publicUrlData } = supabase.storage
+            .from('audiobooks')
+            .getPublicUrl(cloudFileName);
+
+        const permanentUrl = publicUrlData.publicUrl;
+        console.log(`✅ [Finalizer] Upload complete! Permanent Link: ${permanentUrl}`);
+        // -------------------------------
+
         let swept = 0;
         for (const row of rows) {
             if (row.audio_path && fs.existsSync(row.audio_path)) {
@@ -71,14 +90,14 @@ export async function finalizeManuscript(pool, bookTitle) {
                 } catch (e) {}
             }
         }
-        console.log(`🧹 [Garbage Collection] Reclaimed disk space from ${swept} temporary chunk files.`);
+        console.log(`🧹 [Garbage Collection] Reclaimed disk space from ${swept} chunks.`);
 
-        // Flip DB rows to 'archived' so the Dispatcher daemon ignores them forever
+        // Flip DB rows to 'archived' AND attach the cloud URL!
         await client.query(`
             UPDATE book_chunks 
-            SET status = 'archived' 
+            SET status = 'archived', cloud_url = $2
             WHERE book_title = $1;
-        `, [bookTitle]);
+        `, [bookTitle, permanentUrl]);
 
     } catch (err) {
         console.error(`❌ [Finalizer Crash] Failed compiling "${bookTitle}":`, err.message);

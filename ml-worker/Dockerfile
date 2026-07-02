@@ -15,4 +15,4 @@ COPY . .
 EXPOSE 7860
 
 # Boot up the FastAPI server on the correct port
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "7860"]
+CMD ["uvicorn", "tts_worker:app", "--host", "0.0.0.0", "--port", "7860"]

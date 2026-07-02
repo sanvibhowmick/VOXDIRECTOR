@@ -79,45 +79,52 @@ export const processBook = async (req, res) => {
         res.status(500).json({ error: "Internal Server Error during document parsing: " + error.message });
     }
 };
-
 export const getBookStatus = async (req, res) => {
     const bookTitle = decodeURIComponent(req.params.book_title);
+    
+    const client = await pool.connect();
+    try {
+        // We pull the done count, total count, and check if a cloud URL exists yet
+        const { rows } = await client.query(`
+            SELECT 
+                COUNT(*) FILTER (WHERE status = 'completed' OR status = 'archived') AS done,
+                COUNT(*) AS total,
+                MAX(cloud_url) as cloud_url
+            FROM book_chunks 
+            WHERE book_title = $1;
+        `, [bookTitle]);
 
-    res.setHeader('Content-Type', 'text/event-stream');
-    res.setHeader('Cache-Control', 'no-cache');
-    res.setHeader('Connection', 'keep-alive');
-    res.flushHeaders();
+        const done = Number(rows[0].done);
+        const total = Number(rows[0].total);
+        const cloudUrl = rows[0].cloud_url;
+        const percent = total > 0 ? Math.floor((done / total) * 100) : 0;
 
-    const progressTimer = setInterval(async () => {
-        const client = await pool.connect();
-        try {
-            const { rows } = await client.query(`
-                SELECT 
-                    COUNT(*) FILTER (WHERE status = 'completed' OR status = 'archived') AS done,
-                    COUNT(*) AS total
-                FROM book_chunks 
-                WHERE book_title = $1;
-            `, [bookTitle]);
-
-            const done = Number(rows[0].done);
-            const total = Number(rows[0].total);
-            const percent = total > 0 ? Math.floor((done / total) * 100) : 0;
-
-            const payload = JSON.stringify({ processed: done, total, percent, status: percent === 100 ? 'READY' : 'PROCESSING' });
-            res.write(`data: ${payload}\n\n`);
-
-            if (percent === 100 && total > 0) {
-                clearInterval(progressTimer);
-                res.end();
-            }
-        } catch (err) {
-            console.error(`⚠️ [SSE Error]:`, err.message);
-        } finally {
-            client.release();
+        let status = 'processing';
+        
+        // If the AI is done, but the finalizer is still uploading to Supabase
+        if (percent === 100 && !cloudUrl) {
+            status = 'finalizing';
+        } 
+        // If the cloud URL is ready, the whole job is officially completed
+        else if (percent === 100 && cloudUrl) {
+            status = 'completed';
         }
-    }, 1000);
 
-    req.on('close', () => clearInterval(progressTimer));
+        // Return a clean, instant JSON response for the frontend to read
+        res.json({ 
+            processed: done, 
+            total, 
+            percent, 
+            status, 
+            cloudUrl 
+        });
+
+    } catch (err) {
+        console.error(`⚠️ Status check error:`, err.message);
+        res.status(500).json({ error: "Failed to check status" });
+    } finally {
+        client.release();
+    }
 };
 
 export const cleanupBookFiles = async (req, res) => {

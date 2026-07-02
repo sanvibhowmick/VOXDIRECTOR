@@ -1,36 +1,52 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect } from "react";
 import { Check } from "lucide-react";
-import { subscribeToProgress, getAudioUrl } from "../services/api";
+// 🆕 Swapped out SSE for your bulletproof polling function
+import { checkJobStatus, getAudioUrl } from "../services/api";
 
 const STAGES = ["Reading manuscript", "Casting the voice", "Mastering audio"];
 
 export default function LiveProgress({ bookData, onComplete }) {
   const [percent, setPercent] = useState(0);
   const [error, setError] = useState("");
-  const doneRef = useRef(false);
 
   const title = typeof bookData === "string" 
     ? bookData 
     : bookData?.title || "Untitled";
 
+  // 🆕 Bulletproof Polling Implementation
   useEffect(() => {
-    const unsubscribe = subscribeToProgress(
-      title,
-      (packet) => setPercent(packet.percent || 0),
-      () => {
-        if (doneRef.current) return;
-        doneRef.current = true;
+    if (!title) return;
+
+    const interval = setInterval(async () => {
+      try {
+        const data = await checkJobStatus(title);
         
-        setTimeout(() => {
-          onComplete?.({ 
-            duration: "Ready",
-            audioUrl: getAudioUrl(title)
-          });
-        }, 600);
-      },
-      (err) => setError("Connection interrupted. Synthesis running in background...")
-    );
-    return () => unsubscribe();
+        // Update the progress wheel
+        if (data.percent !== undefined) {
+          setPercent(data.percent);
+          setError(""); // Clear any temporary network errors
+        }
+
+        // If the backend says the book is completely finished
+        if (data.status === 'completed' || data.status === 'READY') {
+          clearInterval(interval);
+          
+          setTimeout(() => {
+            onComplete?.({ 
+              duration: "Ready",
+              // Use the permanent cloud URL if available, fallback to direct API route
+              audioUrl: data.cloudUrl || getAudioUrl(title) 
+            });
+          }, 600);
+        }
+      } catch (err) {
+        console.error("Polling error:", err);
+        // Don't crash! Just show a gentle background warning while we retry
+        setError("Connection interrupted. Synthesis running in background...");
+      }
+    }, 5000); // Checks exactly every 5 seconds
+
+    return () => clearInterval(interval);
   }, [title, onComplete]);
 
   const stageIndex = percent < 30 ? 0 : percent < 85 ? 1 : 2;
@@ -115,7 +131,7 @@ export default function LiveProgress({ bookData, onComplete }) {
         }
         @keyframes lpPulse {
           0%, 100% { box-shadow: 0 0 0 0   rgba(200,134,47,0.3); }
-          50%       { box-shadow: 0 0 0 5px rgba(200,134,47,0);   }
+          50%      { box-shadow: 0 0 0 5px rgba(200,134,47,0);   }
         }
 
         /* ── Waveform bars ── */
@@ -134,7 +150,7 @@ export default function LiveProgress({ bookData, onComplete }) {
         }
         @keyframes lpWave {
           0%, 100% { transform: scaleY(0.25); }
-          50%       { transform: scaleY(1);    }
+          50%      { transform: scaleY(1);    }
         }
 
         @media (prefers-reduced-motion: reduce) {

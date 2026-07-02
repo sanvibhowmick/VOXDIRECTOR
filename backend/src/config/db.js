@@ -21,11 +21,20 @@ export async function initDB() {
             status VARCHAR(50) DEFAULT 'queued',
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             audio_path TEXT,
-            target_sentence TEXT
+            target_sentence TEXT,
+            cloud_url TEXT
         );
     `;
+    
+    // This safely adds the column to your existing database if you already created the table!
+    const addColumnQuery = `
+        ALTER TABLE book_chunks 
+        ADD COLUMN IF NOT EXISTS cloud_url TEXT;
+    `;
+
     try {
         await pool.query(createTableQuery);
+        await pool.query(addColumnQuery);
         console.log("📊 PostgreSQL Database Connected & Tables Verified.");
     } catch (err) {
         console.error("❌ Database Initialization Error:", err.message);

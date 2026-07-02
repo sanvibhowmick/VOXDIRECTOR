@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import Navbar from "./components/Navbar";
 import Hero from "./components/Hero";
 import BookDropzone from "./components/BookDropzone";
@@ -14,6 +14,18 @@ export default function App() {
   const [result,   setResult]   = useState(null);
  
   const navStatus = { home: "idle", generating: "generating", player: "ready" }[screen];
+
+  // 🆕 1. ON PAGE LOAD: Check if a book was already processing in the background
+  useEffect(() => {
+    const savedJob = localStorage.getItem("activeBookJob");
+    const savedVoice = localStorage.getItem("activeBookVoice");
+    
+    if (savedJob) {
+      console.log("🔄 Resuming previous job from localStorage:", savedJob);
+      setBookData({ title: savedJob, voice: savedVoice || "nova" });
+      setScreen("generating");
+    }
+  }, []);
  
   /**
    * BINARY RELAY: Ships physical hard drive File object directly to Express Multer
@@ -25,6 +37,11 @@ export default function App() {
     try {
       console.log(`🚀 [App.jsx] Transmitting binary "${file.name}" to Express Gateway...`);
       await uploadManuscript(file, title, voice);
+      
+      // 🆕 2. SAVE THE TICKET: So the browser remembers it if refreshed
+      localStorage.setItem("activeBookJob", title);
+      localStorage.setItem("activeBookVoice", voice);
+
     } catch (err) {
       console.error("❌ Transmission failed:", err);
       alert(`Failed to send manuscript to server:\n${err.message}`);
@@ -32,8 +49,24 @@ export default function App() {
     }
   };
 
-  const handleComplete = (res)  => { setResult(res);    setScreen("player");     };
-  const handleReset    = ()     => { setBookData(null); setResult(null); setScreen("home"); };
+  const handleComplete = (res)  => { 
+    setResult(res);    
+    setScreen("player");     
+    
+    // 🆕 3. CLEANUP: Generation finished, clear the storage
+    localStorage.removeItem("activeBookJob");
+    localStorage.removeItem("activeBookVoice");
+  };
+
+  const handleReset = () => { 
+    setBookData(null); 
+    setResult(null); 
+    setScreen("home"); 
+    
+    // 🆕 4. CLEANUP: Clear storage on manual reset too
+    localStorage.removeItem("activeBookJob");
+    localStorage.removeItem("activeBookVoice");
+  };
  
   const scrollToMain = () =>
     document.getElementById("main-content")?.scrollIntoView({ behavior: "smooth" });

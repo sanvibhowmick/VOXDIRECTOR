@@ -16,31 +16,14 @@ export const uploadManuscript = async (file, title, voice) => {
     const errorData = await res.json().catch(() => ({}));
     throw new Error(errorData.error || `Server responded with ${res.status}`);
   }
-  return res.json();
+  return res.json(); // This now returns instantly with your "Ticket"
 };
 
-export const subscribeToProgress = (title, onProgress, onComplete, onError) => {
-  const es = new EventSource(`${API_BASE}/api/status/${encodeURIComponent(title)}`);
-
-  es.onmessage = (event) => {
-    try {
-      const data = JSON.parse(event.data);
-      onProgress(data);
-      if (data.status === "READY") {
-        es.close();
-        onComplete(data);
-      }
-    } catch (err) {
-      console.error("Failed to parse SSE data", err);
-    }
-  };
-
-  es.onerror = (err) => {
-    es.close();
-    if (onError) onError(err);
-  };
-
-  return () => es.close();
+// 🆕 REPLACED SSE WITH A BULLETPROOF POLLING FETCH
+export const checkJobStatus = async (title) => {
+  const res = await fetch(`${API_BASE}/api/status/${encodeURIComponent(title)}`);
+  if (!res.ok) throw new Error("Failed to fetch status");
+  return res.json();
 };
 
 // NEW: Centralized Cleanup API
