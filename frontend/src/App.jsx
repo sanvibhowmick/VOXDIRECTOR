@@ -110,7 +110,7 @@ export default function App() {
             <SectionLabel text="How it works" />
             <div className="app-steps">
               {[
-                { num: "01", title: "Upload",   desc: "PDF, DOCX, TXT, or EPUB — any length." },
+                { num: "01", title: "Upload",   desc: "PDF or TXT — any length." },
                 { num: "02", title: "Download", desc: "Chapter-split MP3s, ready to share."   },
               ].map((s) => (
                 <div key={s.num} className="app-step-card">

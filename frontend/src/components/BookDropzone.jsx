@@ -181,7 +181,7 @@ export default function BookDropzone({ onGenerate }) {
         <input
           type="file"
           id="vox-file-input"
-          accept=".txt,.pdf,.epub,.docx"
+          accept=".txt,.pdf"
           style={{ display: "none" }}
           onChange={handleFileInput}
         />
@@ -202,7 +202,7 @@ export default function BookDropzone({ onGenerate }) {
           <>
             <div className="dz-title">Drop your manuscript here</div>
             <div className="dz-sub">or click to browse</div>
-            <div className="dz-formats">.TXT · .PDF · .EPUB · .DOCX</div>
+            <div className="dz-formats">.TXT · .PDF ·</div>
           </>
         )}
       </div>
