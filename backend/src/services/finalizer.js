@@ -59,7 +59,7 @@ export async function finalizeManuscript(pool, bookTitle) {
 
         console.log(`🎉 [Finalizer] Master MP3 stitched: ${masterPath}`);
 
-        // --- NEW: STREAMING CLOUD UPLOAD LOGIC (Prevents RAM Crash!) ---
+        // --- STREAMING CLOUD UPLOAD LOGIC (Prevents RAM Crash!) ---
         console.log(`☁️ [Finalizer] Streaming master file to Supabase Storage...`);
         
         // Create a safe, web-friendly filename
@@ -98,12 +98,26 @@ export async function finalizeManuscript(pool, bookTitle) {
         }
         console.log(`🧹 [Garbage Collection] Reclaimed disk space from ${swept} chunks.`);
 
-        // Flip DB rows to 'archived' AND attach the cloud URL!
+        // --- NEW DB CLEANUP LOGIC (Single-Row Anchor Hack) ---
+        // 1. Pick exactly ONE chunk to act as the "memory" of the book, and save the URL there.
         await client.query(`
             UPDATE book_chunks 
             SET status = 'archived', cloud_url = $2
-            WHERE book_title = $1;
+            WHERE id = (
+                SELECT id FROM book_chunks 
+                WHERE book_title = $1 
+                LIMIT 1
+            );
         `, [bookTitle, permanentUrl]);
+
+        // 2. Obliterate every other chunk for this book!
+        const deleteRes = await client.query(`
+            DELETE FROM book_chunks 
+            WHERE book_title = $1 AND status != 'archived';
+        `, [bookTitle]);
+
+        console.log(`💥 [DB Cleanup] Obliterated ${deleteRes.rowCount} database rows for "${bookTitle}". Database is clean!`);
+        // -----------------------------------------------------
 
     } catch (err) {
         console.error(`❌ [Finalizer Crash] Failed compiling "${bookTitle}":`, err.message);
