@@ -140,5 +140,6 @@ if __name__ == "__main__":
         "tts_worker:app",
         host="0.0.0.0",
         port=cloud_port,
-        reload=True
+        reload=True,
+        workers=4
     )
