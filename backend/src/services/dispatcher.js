@@ -22,8 +22,12 @@ const ML_WORKER_URL = process.env.ML_WORKER_URL;
 const TTS_WORKER_URL = process.env.TTS_WORKER_URL;
 
 // 🆕 Tweaked for max concurrency
-const BATCH_SIZE = 10; 
+const BATCH_SIZE = 10;
 const POLLING_INTERVAL_MS = 2500;
+
+// 🆕 Retry policy for transient ML/TTS failures
+const MAX_RETRIES = 3;
+const RETRY_BACKOFF_BASE_MS = 5000; // 5s, 10s, 20s (exponential)
 
 const MASTER_DIR = path.resolve(__dirname, '../../master_audiobooks');
 if (!fs.existsSync(MASTER_DIR)) fs.mkdirSync(MASTER_DIR, { recursive: true });
@@ -43,11 +47,12 @@ export function startDispatcherDaemon() {
                 WHERE id IN (
                     SELECT id FROM book_chunks
                     WHERE status = 'queued'
+                      AND (retry_after IS NULL OR retry_after <= NOW())
                     ORDER BY sequence_index ASC
                     LIMIT $1
                     FOR UPDATE SKIP LOCKED
                 )
-                RETURNING id, book_title, sequence_index, context_window, raw_sentence;
+                RETURNING id, book_title, sequence_index, context_window, raw_sentence, retry_count;
             `, [BATCH_SIZE]);
 
             if (chunks.length === 0) return;
@@ -98,10 +103,13 @@ export function startDispatcherDaemon() {
                         console.log(`🎯 Chunk [${chunk.id}] -> [${wonEmotion.toUpperCase()}] -> 🔊 Saved Locally!`);
 
                         // --- FINALIZER CHECK ---
+                        // dead_letter chunks are terminal (retries exhausted) and must not
+                        // block finalization forever — the book finalizes without that sentence.
                         const { rows: check } = await client.query(`
                             SELECT COUNT(*) AS remaining 
                             FROM book_chunks 
-                            WHERE book_title = $1 AND status != 'completed' AND status != 'archived';
+                            WHERE book_title = $1 
+                              AND status NOT IN ('completed', 'archived', 'dead_letter');
                         `, [chunk.book_title]);
 
                         if (Number(check[0].remaining) === 0) {
@@ -109,9 +117,33 @@ export function startDispatcherDaemon() {
                         }
 
                     } catch (err) {
-                        console.error(`❌ Relay dropped Chunk ${chunk.id}:`, err.message);
-                        // Re-queue the chunk if it fails so it tries again later
-                        await client.query(`UPDATE book_chunks SET status = 'failed' WHERE id = $1`, [chunk.id]);
+                        console.error(`❌ Relay dropped Chunk ${chunk.id} (attempt ${chunk.retry_count + 1}):`, err.message);
+
+                        const nextRetryCount = chunk.retry_count + 1;
+
+                        if (nextRetryCount < MAX_RETRIES) {
+                            // 🔁 Transient failure: requeue with exponential backoff
+                            const backoffMs = RETRY_BACKOFF_BASE_MS * Math.pow(2, chunk.retry_count);
+                            await client.query(`
+                                UPDATE book_chunks
+                                SET status = 'queued',
+                                    retry_count = $1,
+                                    retry_after = NOW() + ($2 || ' milliseconds')::interval,
+                                    last_error = $3
+                                WHERE id = $4
+                            `, [nextRetryCount, backoffMs, err.message, chunk.id]);
+                        } else {
+                            // ⚰️ Exhausted retries: terminal dead-letter state so it stops
+                            // being reclaimed, and so it no longer blocks finalization.
+                            console.error(`⚰️ Chunk ${chunk.id} exceeded ${MAX_RETRIES} retries — moved to dead_letter.`);
+                            await client.query(`
+                                UPDATE book_chunks
+                                SET status = 'dead_letter',
+                                    retry_count = $1,
+                                    last_error = $2
+                                WHERE id = $3
+                            `, [nextRetryCount, err.message, chunk.id]);
+                        }
                     }
                 })
             );
