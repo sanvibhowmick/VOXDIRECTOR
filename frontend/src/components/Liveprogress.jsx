@@ -41,6 +41,20 @@ export default function LiveProgress({ bookData, onComplete, onReset }) {
             });
           }, 600);
         }
+
+        // 🆕 Finished, but some sentences hit max retries and were skipped —
+        // still deliver the audiobook, just let the user know it's incomplete.
+        if (data.status === 'completed_with_errors') {
+          clearInterval(interval);
+
+          setTimeout(() => {
+            onComplete?.({
+              duration: "Ready",
+              audioUrl: data.cloudUrl || getAudioUrl(title),
+              warning: `Audiobook is ready, but ${data.failed} sentence(s) could not be narrated after multiple attempts and were skipped.`
+            });
+          }, 600);
+        }
       } catch (err) {
         console.error("Polling error:", err);
         setError("Connection interrupted. Trying to reconnect...");

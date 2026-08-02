@@ -87,7 +87,7 @@ export const getBookStatus = async (req, res) => {
         const { rows } = await client.query(`
             SELECT 
                 COUNT(*) FILTER (WHERE status = 'completed' OR status = 'archived') AS done,
-                COUNT(*) FILTER (WHERE status = 'failed') AS failed,
+                COUNT(*) FILTER (WHERE status = 'dead_letter') AS dead_letter,
                 COUNT(*) AS total,
                 MAX(cloud_url) as cloud_url
             FROM book_chunks 
@@ -95,26 +95,39 @@ export const getBookStatus = async (req, res) => {
         `, [bookTitle]);
 
         const done = Number(rows[0].done);
-        const failed = Number(rows[0].failed);
+        const deadLetter = Number(rows[0].dead_letter);
         const total = Number(rows[0].total);
         const cloudUrl = rows[0].cloud_url;
-        
-        const percent = total > 0 ? Math.floor((done / total) * 100) : 0;
+
+        // dead_letter chunks are terminal (retries exhausted) — they count toward
+        // "finished processing" for progress purposes, same as the finalizer treats them.
+        const finished = done + deadLetter;
+        const percent = total > 0 ? Math.floor((finished / total) * 100) : 0;
 
         let status = 'processing';
-        
-        // 🆕 THE DETECTOR: If everything is processed, but some failed, the job is dead.
-        if (total > 0 && (done + failed === total) && failed > 0) {
+
+        if (total > 0 && deadLetter === total) {
+            // Every single chunk died — nothing to finalize, truly failed.
             status = 'failed';
         }
-        else if (percent === 100 && !cloudUrl) {
+        else if (finished === total && !cloudUrl) {
             status = 'finalizing';
-        } 
-        else if (percent === 100 && cloudUrl) {
-            status = 'completed';
+        }
+        else if (finished === total && cloudUrl) {
+            // Completed, but flag if some sentences were skipped so the UI/user
+            // can be told the audiobook is missing a few lines instead of silently
+            // shipping an incomplete file.
+            status = deadLetter > 0 ? 'completed_with_errors' : 'completed';
         }
 
-        res.json({ processed: done, total, percent, status, cloudUrl, failed });
+        res.json({
+            processed: done,
+            total,
+            percent,
+            status,
+            cloudUrl,
+            failed: deadLetter // kept as `failed` for frontend backward-compatibility
+        });
 
     } catch (err) {
         console.error(`⚠️ Status check error:`, err.message);
