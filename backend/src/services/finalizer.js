@@ -41,20 +41,37 @@ export async function finalizeManuscript(pool, bookTitle) {
         const masterPath = path.join(MASTER_DIR, `${bookTitle}.mp3`);
         const writeStream = fs.createWriteStream(masterPath);
 
-        // Stitching tiny chunk files into the master stream is memory-safe
-        for (const row of rows) {
-            if (row.audio_path && fs.existsSync(row.audio_path)) {
-                const buffer = fs.readFileSync(row.audio_path);
-                writeStream.write(buffer);
-            }
-        }
-
-        writeStream.end();
+        let writtenBytes = 0;
 
         await new Promise((resolve, reject) => {
-            writeStream.on('finish', resolve);
             writeStream.on('error', reject);
+            writeStream.on('finish', resolve);
+
+            for (const row of rows) {
+                if (row.audio_path && fs.existsSync(row.audio_path)) {
+                    const buffer = fs.readFileSync(row.audio_path);
+                    writeStream.write(buffer);
+                    writtenBytes += buffer.length;
+                }
+            }
+
+            writeStream.end();
+
+            // Guard against synchronous finish race condition
+            if (writeStream.writableFinished) {
+                resolve();
+            }
         });
+
+        if (writtenBytes === 0) {
+            console.warn(`⚠️ [Finalizer] No chunk audio files found on disk for "${bookTitle}" (possibly cleared by container restart). Re-queuing chunks...`);
+            await client.query(`
+                UPDATE book_chunks 
+                SET status = 'queued', retry_count = 0, retry_after = NOW() 
+                WHERE book_title = $1 AND status = 'completed';
+            `, [bookTitle]);
+            return;
+        }
 
         console.log(`🎉 [Finalizer] Master MP3 stitched: ${masterPath}`);
 

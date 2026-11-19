@@ -7,6 +7,7 @@ const STAGES = ["Reading manuscript", "Casting the voice", "Mastering audio"];
 // 🆕 Accept onReset as a prop
 export default function LiveProgress({ bookData, onComplete, onReset }) {
   const [percent, setPercent] = useState(0);
+  const [jobStatus, setJobStatus] = useState("processing");
   const [error, setError] = useState("");
   const [isDead, setIsDead] = useState(false); // 🆕 Track if the job completely failed
 
@@ -22,6 +23,7 @@ export default function LiveProgress({ bookData, onComplete, onReset }) {
         const data = await checkJobStatus(title);
         
         if (data.percent !== undefined) setPercent(data.percent);
+        if (data.status) setJobStatus(data.status);
 
         // 🆕 Handle the dead job state from the backend
         if (data.status === 'failed') {
@@ -64,7 +66,11 @@ export default function LiveProgress({ bookData, onComplete, onReset }) {
     return () => clearInterval(interval);
   }, [title, onComplete, isDead]);
 
-  const stageIndex = percent < 30 ? 0 : percent < 85 ? 1 : 2;
+  const stageIndex = jobStatus === 'finalizing' 
+    ? 2 
+    : percent < 30 
+      ? 0 
+      : 1;
   const circumference = 2 * Math.PI * 54;
   const offset = circumference * (1 - percent / 100);
 

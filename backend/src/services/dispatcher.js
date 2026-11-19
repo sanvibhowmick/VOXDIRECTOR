@@ -54,7 +54,29 @@ export function startDispatcherDaemon() {
                 RETURNING id, book_title, sequence_index, context_window, raw_sentence, retry_count;
             `, [BATCH_SIZE]);
 
-            if (chunks.length === 0) return;
+            if (chunks.length === 0) {
+                // Sweep check: Ensure any finished books get finalized immediately
+                const { rows: unfinalized } = await client.query(`
+                    SELECT DISTINCT book_title 
+                    FROM book_chunks 
+                    WHERE status = 'completed'
+                      AND book_title NOT IN (
+                          SELECT DISTINCT book_title 
+                          FROM book_chunks 
+                          WHERE status NOT IN ('completed', 'dead_letter')
+                      )
+                      AND book_title NOT IN (
+                          SELECT DISTINCT book_title 
+                          FROM book_chunks 
+                          WHERE status = 'archived' OR cloud_url IS NOT NULL
+                      );
+                `);
+
+                for (const row of unfinalized) {
+                    finalizeManuscript(pool, row.book_title);
+                }
+                return;
+            }
 
             // 🚀 NEW: Concurrent execution fires all requests simultaneously!
             await Promise.all(
@@ -142,6 +164,18 @@ export function startDispatcherDaemon() {
                                     last_error = $2
                                 WHERE id = $3
                             `, [nextRetryCount, err.message, chunk.id]);
+
+                            // 🆕 Check if all remaining chunks are cleared and finalize
+                            const { rows: check } = await client.query(`
+                                SELECT COUNT(*) AS remaining 
+                                FROM book_chunks 
+                                WHERE book_title = $1 
+                                  AND status NOT IN ('completed', 'archived', 'dead_letter');
+                            `, [chunk.book_title]);
+
+                            if (Number(check[0].remaining) === 0) {
+                                finalizeManuscript(pool, chunk.book_title);
+                            }
                         }
                     }
                 })
