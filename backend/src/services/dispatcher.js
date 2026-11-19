@@ -14,13 +14,15 @@ const __dirname = path.dirname(__filename);
 const ML_WORKER_URL = process.env.ML_WORKER_URL;
 const TTS_WORKER_URL = process.env.TTS_WORKER_URL;
 
-// 🆕 Tweaked for max concurrency
-const BATCH_SIZE = 10;
-const POLLING_INTERVAL_MS = 2500;
+// 🆕 Controlled batching to prevent overwhelming cloud TTS & ML workers
+const BATCH_SIZE = 3;
+const POLLING_INTERVAL_MS = 2000;
 
 // 🆕 Retry policy for transient ML/TTS failures
 const MAX_RETRIES = 3;
 const RETRY_BACKOFF_BASE_MS = 5000; // 5s, 10s, 20s (exponential)
+
+let isPolling = false;
 
 const MASTER_DIR = path.resolve(__dirname, '../../master_audiobooks');
 if (!fs.existsSync(MASTER_DIR)) fs.mkdirSync(MASTER_DIR, { recursive: true });
@@ -32,6 +34,9 @@ export function startDispatcherDaemon() {
     console.log(`⚡ VoxDirector Daemon online! Polling ${BATCH_SIZE} chunks at a time...`);
 
     setInterval(async () => {
+        if (isPolling) return; // Prevent overlapping cycles if previous batch is still synthesizing
+        isPolling = true;
+
         let client;
         try {
             client = await pool.connect();
@@ -146,6 +151,7 @@ export function startDispatcherDaemon() {
             console.error("⚠️ Database polling hiccup:", e.message);
         } finally {
             if (client) client.release();
+            isPolling = false;
         }
     }, POLLING_INTERVAL_MS);
 }
