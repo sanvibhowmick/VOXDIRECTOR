@@ -43,8 +43,9 @@ export const processBook = async (req, res) => {
         const triplets = createSlidingTriplets(scrubbedText);
 
         console.log(`💾 Queuing ${triplets.length} chunks into PostgreSQL...`);
-        const client = await pool.connect();
+        let client;
         try {
+            client = await pool.connect();
             await client.query('BEGIN');
             const insertQuery = `
                 INSERT INTO book_chunks (book_title, sequence_index, raw_sentence, target_sentence, context_window, status)
@@ -59,10 +60,10 @@ export const processBook = async (req, res) => {
             }
             await client.query('COMMIT');
         } catch (e) {
-            await client.query('ROLLBACK');
+            if (client) await client.query('ROLLBACK');
             throw e;
         } finally {
-            client.release();
+            if (client) client.release();
         }
 
         console.log(`🎟️ Issued HTTP 202 Ticket for "${title}"!`);
@@ -82,8 +83,9 @@ export const processBook = async (req, res) => {
 export const getBookStatus = async (req, res) => {
     const bookTitle = decodeURIComponent(req.params.book_title);
     
-    const client = await pool.connect();
+    let client;
     try {
+        client = await pool.connect();
         const { rows } = await client.query(`
             SELECT 
                 COUNT(*) FILTER (WHERE status = 'completed' OR status = 'archived') AS done,
@@ -133,7 +135,7 @@ export const getBookStatus = async (req, res) => {
         console.error(`⚠️ Status check error:`, err.message);
         res.status(500).json({ error: "Failed to check status" });
     } finally {
-        client.release();
+        if (client) client.release();
     }
 };
 

@@ -23,8 +23,9 @@ export async function finalizeManuscript(pool, bookTitle) {
 
     console.log(`\n🧵 [Finalizer] All chunks cleared for "${bookTitle}". Initiating Master Byte-Stitch...`);
 
-    const client = await pool.connect();
+    let client;
     try {
+        client = await pool.connect();
         const { rows } = await client.query(`
             SELECT id, audio_path 
             FROM book_chunks 
@@ -108,6 +109,6 @@ export async function finalizeManuscript(pool, bookTitle) {
         console.error(`❌ [Finalizer Crash] Failed compiling "${bookTitle}":`, err.message);
     } finally {
         activeJobs.delete(bookTitle);
-        client.release();
+        if (client) client.release();
     }
 }

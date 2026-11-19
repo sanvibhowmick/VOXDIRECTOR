@@ -9,6 +9,15 @@ import path from 'path';
 
 dotenv.config();
 
+// Safety nets for unhandled rejections to prevent container crash loops on cloud hosts
+process.on('unhandledRejection', (reason) => {
+    console.error('⚠️ Unhandled Rejection caught:', reason);
+});
+
+process.on('uncaughtException', (err) => {
+    console.error('⚠️ Uncaught Exception caught:', err);
+});
+
 const app = express();
 const PORT = process.env.PORT || 5000;
 const __filename = fileURLToPath(import.meta.url);

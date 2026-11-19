@@ -1,22 +1,15 @@
-import pg from 'pg';
 import dotenv from 'dotenv';
 import fs from 'fs';
 import { promises as fsPromises } from 'fs'; // 🆕 Required for concurrent non-blocking file writes
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { pool } from '../config/db.js';
 import { finalizeManuscript } from './finalizer.js';
 
 dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-
-const { Pool } = pg;
-const pool = new Pool({ connectionString: process.env.DATABASE_URL });
-
-pool.on('error', (err, client) => {
-    console.error('⚠️ Unexpected network error on idle client:', err.message);
-});
 
 const ML_WORKER_URL = process.env.ML_WORKER_URL;
 const TTS_WORKER_URL = process.env.TTS_WORKER_URL;
@@ -39,8 +32,9 @@ export function startDispatcherDaemon() {
     console.log(`⚡ VoxDirector Daemon online! Polling ${BATCH_SIZE} chunks at a time...`);
 
     setInterval(async () => {
-        const client = await pool.connect();
+        let client;
         try {
+            client = await pool.connect();
             const { rows: chunks } = await client.query(`
                 UPDATE book_chunks
                 SET status = 'processing'
@@ -149,9 +143,9 @@ export function startDispatcherDaemon() {
             );
 
         } catch (e) {
-            console.error("Database polling hiccup:", e.message);
+            console.error("⚠️ Database polling hiccup:", e.message);
         } finally {
-            client.release();
+            if (client) client.release();
         }
     }, POLLING_INTERVAL_MS);
 }
